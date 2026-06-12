@@ -1,0 +1,12 @@
+(
+    components: [
+        (name: "Health", default: (value: 100.0, max: 100.0)),
+    ],
+    entities: [
+        (components: { "Health": (value: 10.0) }),
+        (components: { "Health": (value: 4.0) }),
+    ],
+    systems: [
+        Script(path: "combat_state.rhai"),
+    ],
+)

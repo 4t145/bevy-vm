@@ -1,0 +1,12 @@
+(
+    components: [
+        (name: "Inventory", default: (slots: [])),
+        (name: "Item", default: (kind: "", durability: 1.0)),
+    ],
+    entities: [
+        (components: { "Inventory": (slots: []) }),
+    ],
+    systems: [
+        Script(path: "inventory.rhai"),
+    ],
+)

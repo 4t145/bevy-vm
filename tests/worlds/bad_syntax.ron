@@ -1,0 +1,6 @@
+(
+    entities: [],
+    systems: [
+        Script(path: "bad_syntax.rhai"),
+    ],
+)

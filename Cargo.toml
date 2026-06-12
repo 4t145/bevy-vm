@@ -1,0 +1,21 @@
+[package]
+name = "bevy-vm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy_ecs = "0.18"
+bevy_reflect = "0.18"
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
+thiserror = "2"
+rhai = "1.25"
+bevy = { version = "0.18", optional = true }
+
+[features]
+# 图形渲染层（同步层 + viewer）。默认关闭，避免日常 test/clippy 编译整个 bevy。
+render = ["dep:bevy"]
+
+[[example]]
+name = "viewer"
+required-features = ["render"]

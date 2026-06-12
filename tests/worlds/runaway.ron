@@ -1,0 +1,6 @@
+(
+    entities: [],
+    systems: [
+        Script(path: "infinite_loop.rhai"),
+    ],
+)

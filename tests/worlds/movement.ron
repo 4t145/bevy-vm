@@ -1,0 +1,15 @@
+(
+    components: [
+        (name: "Health", default: (value: 100.0)),
+    ],
+    entities: [
+        (components: {
+            "Position": (x: 0.0, y: 0.0),
+            "Velocity": (x: 1.0, y: 2.0),
+            "Health": (value: 10.0),
+        }),
+    ],
+    systems: [
+        Script(path: "drain_health.rhai"),
+    ],
+)
