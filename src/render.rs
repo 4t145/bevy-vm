@@ -153,12 +153,8 @@ fn spawn_render_entity(
     transform: Transform,
 ) -> Entity {
     match appearance {
-        Appearance::Primitive {
-            shape,
-            size,
-            material,
-        } => {
-            let mesh = assets.meshes.add(shape.mesh(*size));
+        Appearance::Primitive { shape, material } => {
+            let mesh = assets.meshes.add(shape.mesh());
             let material = assets
                 .materials
                 .add(material.build(&mut assets.cache, &assets.server));
@@ -223,10 +219,9 @@ fn read_vec3(vm: &VmWorld, entity: VmEntity, component: &str, fallback: f32) -> 
 
 /// 渲染意图：从沙箱 `Renderable` 组件按 `kind` 读出的外观。
 enum Appearance {
-    /// 程序图元（cube/sphere）+ PBR 材质。
+    /// 程序图元 + PBR 材质。
     Primitive {
         shape: Shape,
-        size: f32,
         material: MaterialSpec,
     },
     /// 自定义网格资产 + PBR 材质。
@@ -238,20 +233,161 @@ enum Appearance {
     Scene { asset: String },
 }
 
-/// 支持的内置图元形状。
+/// 对齐 Bevy 基础 3D 图元的内置实心形状，各自携带其参数。
 enum Shape {
-    Cube,
-    Sphere,
+    /// 长方体，三轴边长。`cube` 是等边便捷别名。
+    Cuboid { x: f32, y: f32, z: f32 },
+    /// 球，半径。
+    Sphere { radius: f32 },
+    /// 圆柱，半径 + 高。
+    Cylinder { radius: f32, height: f32 },
+    /// 胶囊，半径 + 圆柱段长。
+    Capsule { radius: f32, length: f32 },
+    /// 圆锥，底半径 + 高。
+    Cone { radius: f32, height: f32 },
+    /// 圆台，顶/底半径 + 高。
+    ConicalFrustum {
+        radius_top: f32,
+        radius_bottom: f32,
+        height: f32,
+    },
+    /// 环面，内半径(管粗) + 外半径(环大小)。
+    Torus { inner: f32, outer: f32 },
+    /// 平面，二维半长(用作地面/墙面)。
+    Plane { half_x: f32, half_z: f32 },
+    /// 正四面体，外接立方体边长。
+    Tetrahedron { size: f32 },
 }
 
 impl Shape {
-    /// 构造该形状给定尺寸的网格。
-    fn mesh(&self, size: f32) -> Mesh {
-        match self {
-            Shape::Cube => Cuboid::new(size, size, size).into(),
-            Shape::Sphere => Sphere::new(size * 0.5).into(),
+    /// 构造该形状的网格。
+    fn mesh(&self) -> Mesh {
+        match *self {
+            Shape::Cuboid { x, y, z } => Cuboid::new(x, y, z).into(),
+            Shape::Sphere { radius } => Sphere::new(radius).into(),
+            Shape::Cylinder { radius, height } => Cylinder::new(radius, height).into(),
+            Shape::Capsule { radius, length } => Capsule3d::new(radius, length).into(),
+            Shape::Cone { radius, height } => Cone::new(radius, height).into(),
+            Shape::ConicalFrustum {
+                radius_top,
+                radius_bottom,
+                height,
+            } => bevy::math::primitives::ConicalFrustum {
+                radius_top,
+                radius_bottom,
+                height,
+            }
+            .into(),
+            Shape::Torus { inner, outer } => Torus::new(inner, outer).into(),
+            Shape::Plane { half_x, half_z } => {
+                Plane3d::new(Vec3::Y, Vec2::new(half_x, half_z)).into()
+            }
+            Shape::Tetrahedron { size } => tetrahedron(size).into(),
         }
     }
+
+    /// 从 `Renderable` 组件按 kind 读取形状参数，字段缺失走默认。
+    fn read(vm: &VmWorld, entity: VmEntity, kind: &str) -> Self {
+        let scalar = |field: &str, fallback: f32| {
+            vm.get(entity, RENDERABLE, field)
+                .ok()
+                .and_then(|v| value_as_f32(&v))
+                .unwrap_or(fallback)
+        };
+        match kind {
+            "sphere" => Shape::Sphere {
+                radius: scalar("radius", DEFAULT_SIZE * 0.5),
+            },
+            "cylinder" => Shape::Cylinder {
+                radius: scalar("radius", 0.5),
+                height: scalar("height", DEFAULT_SIZE),
+            },
+            "capsule" => Shape::Capsule {
+                radius: scalar("radius", 0.5),
+                length: scalar("length", DEFAULT_SIZE),
+            },
+            "cone" => Shape::Cone {
+                radius: scalar("radius", 0.5),
+                height: scalar("height", DEFAULT_SIZE),
+            },
+            "conical_frustum" => Shape::ConicalFrustum {
+                radius_top: scalar("radius_top", 0.25),
+                radius_bottom: scalar("radius_bottom", 0.5),
+                height: scalar("height", DEFAULT_SIZE),
+            },
+            "torus" => Shape::Torus {
+                inner: scalar("inner_radius", 0.25),
+                outer: scalar("outer_radius", 0.75),
+            },
+            "plane" => {
+                let half = read_xz_half(vm, entity);
+                Shape::Plane {
+                    half_x: half.0,
+                    half_z: half.1,
+                }
+            }
+            "tetrahedron" => Shape::Tetrahedron {
+                size: scalar("size", DEFAULT_SIZE),
+            },
+            // cube 及未知 kind 一律回退立方体。
+            _ => {
+                let (x, y, z) = read_cuboid_size(vm, entity);
+                Shape::Cuboid { x, y, z }
+            }
+        }
+    }
+}
+
+/// 读取 cuboid 三轴边长：优先 `size: [x,y,z]` 序列，否则标量 `size` 等边，默认 1。
+fn read_cuboid_size(vm: &VmWorld, entity: VmEntity) -> (f32, f32, f32) {
+    if let Some([x, y, z]) = read_xyz(vm, entity, "size") {
+        return (x, y, z);
+    }
+    let s = vm
+        .get(entity, RENDERABLE, "size")
+        .ok()
+        .and_then(|v| value_as_f32(&v))
+        .unwrap_or(DEFAULT_SIZE);
+    (s, s, s)
+}
+
+/// 读取平面 `size: [x,z]` 的半长；缺失默认 5x5。
+fn read_xz_half(vm: &VmWorld, entity: VmEntity) -> (f32, f32) {
+    let ron::Value::Seq(items) = vm
+        .get(entity, RENDERABLE, "size")
+        .unwrap_or(ron::Value::Unit)
+    else {
+        return (5.0, 5.0);
+    };
+    match items.as_slice() {
+        [x, z] => (
+            value_as_f32(x).unwrap_or(10.0) * 0.5,
+            value_as_f32(z).unwrap_or(10.0) * 0.5,
+        ),
+        _ => (5.0, 5.0),
+    }
+}
+
+/// 读取一个 `[x,y,z]` 数值序列字段。
+fn read_xyz(vm: &VmWorld, entity: VmEntity, field: &str) -> Option<[f32; 3]> {
+    let ron::Value::Seq(items) = vm.get(entity, RENDERABLE, field).ok()? else {
+        return None;
+    };
+    let [x, y, z] = items.as_slice() else {
+        return None;
+    };
+    Some([value_as_f32(x)?, value_as_f32(y)?, value_as_f32(z)?])
+}
+
+/// 用「外接立方体边长」构造一个居中的正四面体顶点集合。
+fn tetrahedron(size: f32) -> Tetrahedron {
+    let h = size * 0.5;
+    Tetrahedron::new(
+        Vec3::new(h, h, h),
+        Vec3::new(h, -h, -h),
+        Vec3::new(-h, h, -h),
+        Vec3::new(-h, -h, h),
+    )
 }
 
 impl Appearance {
@@ -271,14 +407,8 @@ impl Appearance {
                 asset: read_asset(vm, entity),
                 material: MaterialSpec::read(vm, entity),
             },
-            "sphere" => Self::Primitive {
-                shape: Shape::Sphere,
-                size: read_size(vm, entity),
-                material: MaterialSpec::read(vm, entity),
-            },
-            _ => Self::Primitive {
-                shape: Shape::Cube,
-                size: read_size(vm, entity),
+            other => Self::Primitive {
+                shape: Shape::read(vm, entity, other),
                 material: MaterialSpec::read(vm, entity),
             },
         }
@@ -359,14 +489,6 @@ fn read_asset(vm: &VmWorld, entity: VmEntity) -> String {
         .ok()
         .and_then(string_value)
         .unwrap_or_default()
-}
-
-/// 读取 `Renderable.size`，缺失走默认。
-fn read_size(vm: &VmWorld, entity: VmEntity) -> f32 {
-    vm.get(entity, RENDERABLE, "size")
-        .ok()
-        .and_then(|v| value_as_f32(&v))
-        .unwrap_or(DEFAULT_SIZE)
 }
 
 /// 从给定路径读取一个三元数值序列作 RGB。
