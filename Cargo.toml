@@ -10,7 +10,8 @@ serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 thiserror = "2"
 rhai = "1.25"
-bevy = { version = "0.18", optional = true }
+# basis-universal: 支持 KHR_texture_basisu（Basis 压缩纹理）的 glTF，许多线上资产用它。
+bevy = { version = "0.18", optional = true, features = ["basis-universal"] }
 
 [features]
 # 图形渲染层（同步层 + viewer）。默认关闭，避免日常 test/clippy 编译整个 bevy。
