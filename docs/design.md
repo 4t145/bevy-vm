@@ -83,6 +83,22 @@ World 1    World 2   World 3    ...
 3. 统一点号路径访问（`world_access` + `path` 导航），两层分发。
 4. Rhai 脚本 system：`query/get/set/add/remove/spawn_entity/despawn/is_alive` 宿主函数，操作数沙箱。
 5. 配置（RON）自声明动态组件 + 实体初值；脚本从独立文件加载。
+6. 图形渲染层（见下），glTF 模型 + PBR 材质 + 变换，真实资产 demo。
+
+## 图形渲染（`render` feature）
+
+- **平行宇宙桥**：沙箱是独立逻辑 `World`，Bevy 主 World 持有渲染管线。同步层维护
+  沙箱实体↔渲染实体映射，每帧增量同步（新增 spawn、存活更新 `Transform`、消失 despawn）。
+- **`VmWorld` 作 NonSend 资源**：非 `Send`（`Rc` + Rhai），钉主线程，对单世界零代价
+  （沙箱本就串行 tick）；其余 bevy system 照常多线程。
+- **`Renderable` 渲染意图组件**，按 `kind` 分派：`cube`/`sphere`（程序图元）、`scene`
+  （glTF，走 `SceneRoot`）、`mesh`（自定义网格）。
+- **资产引用透传给 `AssetServer`**：字符串支持 `source://path#label`，来源（文件/网络/
+  预加载）由 Bevy 的 asset source 注册机制承载，本层不做路径假设；相同资产串经
+  `AssetCache` 去重只加载一次。
+- **PBR 材质全套**：base_color、贴图、法线贴图、metallic、roughness、emissive、透明度。
+- **变换**：`Position` + 可选 `rotation`（欧拉角度，AI 友好）/ `scale`，翻译进 `Transform`。
+- 默认关闭 feature，避免日常 test/clippy 编译整个 bevy。
 
 ## 待定工程项（不影响可行性，正交于运行时架构）
 

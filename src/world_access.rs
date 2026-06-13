@@ -50,8 +50,10 @@ pub fn get(
     ensure_alive(world, entity)?;
     match resolve(registry, component)? {
         ComponentKind::Dynamic(dyn_component) => {
+            // 实体尚未实例化该组件时，回退读取声明的默认值——「声明即存在」，
+            // 让脚本无需先 set 即可 get 一个已声明的动态组件。
             let value = crate::component::dynamic::get(world, entity, dyn_component.id)
-                .ok_or_else(|| missing_component(entity, component))?;
+                .unwrap_or(&dyn_component.default);
             value.path_get(path).cloned()
         }
         ComponentKind::Typed => typed_get(world, registry, entity, component, path),

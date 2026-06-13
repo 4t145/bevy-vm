@@ -25,7 +25,11 @@ fn main() {
     };
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
+    app.add_plugins(DefaultPlugins.set(AssetPlugin {
+        // demo 资产放在 examples/assets/ 下，便于随仓库分发。
+        file_path: "examples/assets".to_owned(),
+        ..default()
+    }));
     app.add_systems(Startup, setup_scene);
     insert_vm_world(&mut app, vm);
     app.run();

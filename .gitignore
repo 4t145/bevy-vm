@@ -1,1 +1,4 @@
 target
+# 平台相关的本地 MCP 工具二进制与机器相关路径配置，不入库
+/vender
+/.mcp.json
