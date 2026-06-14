@@ -13,7 +13,7 @@ use crate::component::{ComponentKind, ComponentRegistry};
 use crate::config::{ConfigFormat, EntityConfig, SystemConfig, WorldConfig};
 use crate::error::VmError;
 use crate::event::{EventError, EventKind, EventRegistry, EventStore, merge_with_default};
-use crate::system::{ScriptSystem, System};
+use crate::system::{Pause, ScriptSystem, System, TickContext};
 use crate::vm_id::{VmId, VmTag};
 use crate::world_access::{self, WorldAccessError};
 use bevy_ecs::prelude::*;
@@ -178,7 +178,7 @@ impl VmInstanceBuilder {
             systems,
             rng,
             time: Time::<()>::default(),
-            paused: false,
+            pause: Pause::default(),
         })
     }
 }
@@ -194,7 +194,7 @@ pub struct VmInstance {
     systems: Vec<Box<dyn System>>,
     rng: crate::random::VmRng,
     time: Time<()>,
-    paused: bool,
+    pause: Pause,
 }
 
 impl VmInstance {
@@ -257,7 +257,7 @@ impl VmInstance {
 
     /// Advance the per-instance clock by `delta`. Pause inserts zero.
     pub fn advance_time(&mut self, delta: std::time::Duration) {
-        let effective = if self.paused {
+        let effective = if self.pause.paused {
             std::time::Duration::ZERO
         } else {
             delta
@@ -267,57 +267,38 @@ impl VmInstance {
 
     /// Pause / unpause the per-instance clock.
     pub fn set_paused(&mut self, paused: bool) {
-        self.paused = paused;
+        self.pause.paused = paused;
     }
 
     /// Whether this instance's clock is paused.
     #[must_use]
     pub fn is_paused(&self) -> bool {
-        self.paused
+        self.pause.paused
     }
 
     /// Run one tick: scripts → swap event buffers.
+    ///
+    /// 三件 per-instance 状态（RNG / Time / Pause）通过 [`TickContext`] 直接
+    /// 借给系统——不再来回搬 World resource。多 VM 共享 World 时彼此完全隔离。
     ///
     /// # Errors
     ///
     /// Returns the corresponding [`VmError`] if any system raises one.
     pub fn tick(&mut self, world: &mut World) -> Result<(), VmError> {
-        let prev_rng = world.remove_resource::<crate::random::VmRng>();
-        let prev_time = world.remove_resource::<Time<()>>();
-        let prev_pause = world.remove_resource::<VmPauseState>();
-        world.insert_resource(std::mem::replace(
-            &mut self.rng,
-            crate::random::VmRng::from_seed(0),
-        ));
-        world.insert_resource(self.time);
-        world.insert_resource(VmPauseState {
-            paused: self.paused,
-        });
+        let mut ctx = TickContext {
+            world,
+            events: &mut self.store,
+            rng: &mut self.rng,
+            time: &mut self.time,
+            pause: &mut self.pause,
+        };
         let result = (|| -> Result<(), VmError> {
             for system in &self.systems {
-                system.run(world, &mut self.store)?;
+                system.run(&mut ctx)?;
             }
             Ok(())
         })();
         self.store.end_tick_all();
-        if let Some(rng) = world.remove_resource::<crate::random::VmRng>() {
-            self.rng = rng;
-        }
-        if let Some(time) = world.remove_resource::<Time<()>>() {
-            self.time = time;
-        }
-        if let Some(pause) = world.remove_resource::<VmPauseState>() {
-            self.paused = pause.paused;
-        }
-        if let Some(prev) = prev_rng {
-            world.insert_resource(prev);
-        }
-        if let Some(prev) = prev_time {
-            world.insert_resource(prev);
-        }
-        if let Some(prev) = prev_pause {
-            world.insert_resource(prev);
-        }
         result
     }
 
@@ -495,16 +476,6 @@ impl VmRegistry {
     pub fn len(&self) -> usize {
         self.instances.len()
     }
-}
-
-/// Pause flag for the in-flight VM tick — temporarily inserted as a
-/// resource so script host functions (`pause()`, `is_paused()`) can read
-/// and write it. After the tick the value is read back into
-/// [`VmInstance::paused`].
-#[derive(Resource, Default, Debug, Clone, Copy)]
-pub struct VmPauseState {
-    /// Paused?
-    pub paused: bool,
 }
 
 fn resolve_root_path(input: &Path) -> std::path::PathBuf {

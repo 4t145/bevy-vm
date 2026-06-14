@@ -24,10 +24,12 @@ mod convert;
 use crate::component::ComponentRegistry;
 use crate::error::VmError;
 use crate::event::{EventKind, EventRegistry, EventStore, merge_with_default};
-use crate::system::System;
+use crate::random::VmRng;
+use crate::system::{Pause, System, TickContext};
 use crate::world_access;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use bevy_time::Time;
 use rhai::{AST, Dynamic, Engine, Scope};
 use std::cell::Cell;
 use std::ptr;
@@ -52,22 +54,36 @@ use crate::vm_id::{VmId, VmTag};
 /// 实体在脚本侧的表示：实体位编码后的整数。
 type ScriptEntity = i64;
 
-/// 脚本运行期间共享的 `&mut` 槽：World + EventStore。
+/// 脚本运行期间共享的 `&mut` 槽：World + EventStore + 三件 per-instance
+/// 资源（RNG / Time / Pause）。
+///
+/// 全部走 raw `*mut`：Rhai host 闭包是 `'static`，无法捕获 borrow，唯一
+/// 安全办法就是「单线程串行 tick + slots 在 run 期非空、外部空」的不变式
+/// 维持。详见 [`crate::system::script`] 模块文档。
 #[derive(Default)]
 struct Slots {
     world: Cell<*mut World>,
     events: Cell<*mut EventStore>,
+    rng: Cell<*mut VmRng>,
+    time: Cell<*mut Time<()>>,
+    pause: Cell<*mut Pause>,
 }
 
 impl Slots {
-    fn fill(&self, world: &mut World, events: &mut EventStore) {
-        self.world.set(ptr::from_mut(world));
-        self.events.set(ptr::from_mut(events));
+    fn fill(&self, ctx: &mut TickContext<'_>) {
+        self.world.set(ptr::from_mut(ctx.world));
+        self.events.set(ptr::from_mut(ctx.events));
+        self.rng.set(ptr::from_mut(ctx.rng));
+        self.time.set(ptr::from_mut(ctx.time));
+        self.pause.set(ptr::from_mut(ctx.pause));
     }
 
     fn clear(&self) {
         self.world.set(ptr::null_mut());
         self.events.set(ptr::null_mut());
+        self.rng.set(ptr::null_mut());
+        self.time.set(ptr::null_mut());
+        self.pause.set(ptr::null_mut());
     }
 }
 
@@ -157,14 +173,15 @@ impl ScriptSystem {
 }
 
 impl System for ScriptSystem {
-    /// 在给定 World + EventStore 上执行一次脚本。
+    /// 在给定上下文上执行一次脚本。
     ///
     /// run_if 表达式先 eval（共享同一 slots，能调 host 函数）；任一为 false
     /// 直接返回 Ok(()) 跳过 system body。
     ///
-    /// 执行期间宿主函数可通过作用域指针读写两者；返回前指针槽被清空。
-    fn run(&self, world: &mut World, events: &mut EventStore) -> Result<(), VmError> {
-        self.slots.fill(world, events);
+    /// 执行期间宿主函数可通过作用域指针读写 World / EventStore / RNG /
+    /// Time / Pause；返回前指针槽被清空。
+    fn run(&self, ctx: &mut TickContext<'_>) -> Result<(), VmError> {
+        self.slots.fill(ctx);
         let result = self.run_inner();
         self.slots.clear();
         result
@@ -522,23 +539,15 @@ fn register_event_functions(
 
 /// 注册 `random()` / `random_range(min, max)` / `random_int(low, high)` 宿主。
 ///
-/// 三者都从 [`crate::random::VmRng`] 资源取——同一 VmWorld 共享一个
-/// 决定性 RNG，配置可指定 seed 让脚本输出可重现。
-///
-/// - `random() -> f64`：均匀采样 `[0, 1)`。
-/// - `random_range(min, max) -> f64`：均匀采样 `[min, max)`，`min >= max`
-///   退化为 `min`。
-/// - `random_int(low, high) -> i64`：均匀采样 `[low, high)`，`low >= high`
-///   退化为 `low`。
+/// 三者直接读写 [`Slots::rng`] 槽——RNG 是 per-instance 的，不挂在 World 资源
+/// 上避免多 VM 互相污染。每帧 [`crate::VmInstance::tick`] 通过
+/// [`crate::system::TickContext::rng`] 把当前 VM 的 RNG 借进来。
 fn register_random(engine: &mut Engine, slots: &Rc<Slots>) {
     let slots_f = Rc::clone(slots);
     engine.register_fn(
         "random",
         move || -> Result<f64, Box<rhai::EvalAltResult>> {
-            let world = world_mut(&slots_f)?;
-            let mut rng = world
-                .get_resource_mut::<crate::random::VmRng>()
-                .ok_or_else(|| into_rhai_error("VmRng resource missing".to_owned()))?;
+            let rng = rng_mut(&slots_f)?;
             Ok(rng.next_f64())
         },
     );
@@ -547,10 +556,7 @@ fn register_random(engine: &mut Engine, slots: &Rc<Slots>) {
     engine.register_fn(
         "random_range",
         move |min: f64, max: f64| -> Result<f64, Box<rhai::EvalAltResult>> {
-            let world = world_mut(&slots_r)?;
-            let mut rng = world
-                .get_resource_mut::<crate::random::VmRng>()
-                .ok_or_else(|| into_rhai_error("VmRng resource missing".to_owned()))?;
+            let rng = rng_mut(&slots_r)?;
             Ok(rng.next_f64_range(min, max))
         },
     );
@@ -559,71 +565,46 @@ fn register_random(engine: &mut Engine, slots: &Rc<Slots>) {
     engine.register_fn(
         "random_int",
         move |low: i64, high: i64| -> Result<i64, Box<rhai::EvalAltResult>> {
-            let world = world_mut(&slots_i)?;
-            let mut rng = world
-                .get_resource_mut::<crate::random::VmRng>()
-                .ok_or_else(|| into_rhai_error("VmRng resource missing".to_owned()))?;
+            let rng = rng_mut(&slots_i)?;
             Ok(rng.next_i64_range(low, high))
         },
     );
 }
 
-/// 注册 `time()` / `delta()` 宿主——直接读 [`bevy_time::Time`] 资源。
+/// 注册 `time()` / `delta()` / `pause()` / `resume()` / `is_paused()` 宿主。
 ///
-/// - `time() -> f64`：自世界启动累计秒数（[`Time::elapsed_secs_f64`]）。
-/// - `delta() -> f64`：本帧 dt 秒数（[`Time::delta_secs_f64`]）。
-///
-/// 时间由 host 端通过 [`crate::VmWorld::advance_time`] 推进；headless
-/// 测试若不 advance，则两者均返回 0，符合"决定性世界"承诺。
+/// 全部走 per-instance slots（[`Slots::time`] / [`Slots::pause`]），不再
+/// 触碰 World 资源，避免多 VM 共用 World 时彼此撞 `Time<()>` /
+/// `VmPauseState`。
 fn register_time(engine: &mut Engine, slots: &Rc<Slots>) {
     let slots_t = Rc::clone(slots);
     engine.register_fn("time", move || -> Result<f64, Box<rhai::EvalAltResult>> {
-        let world = world_ref(&slots_t)?;
-        Ok(world
-            .get_resource::<bevy_time::Time>()
-            .map(bevy_time::Time::elapsed_secs_f64)
-            .unwrap_or(0.0))
+        let time = time_ref(&slots_t)?;
+        Ok(time.elapsed_secs_f64())
     });
 
     let slots_d = Rc::clone(slots);
     engine.register_fn("delta", move || -> Result<f64, Box<rhai::EvalAltResult>> {
-        let world = world_ref(&slots_d)?;
-        Ok(world
-            .get_resource::<bevy_time::Time>()
-            .map(bevy_time::Time::delta_secs_f64)
-            .unwrap_or(0.0))
+        let time = time_ref(&slots_d)?;
+        Ok(time.delta_secs_f64())
     });
 
-    // pause/resume/is_paused：通过 VmPauseState 资源（VmInstance::tick 期间
-    // 临时挂上）通讯。tick 末由 VmInstance 把状态读回 self.paused。
     let slots_p = Rc::clone(slots);
     engine.register_fn("pause", move || -> Result<(), Box<rhai::EvalAltResult>> {
-        let world = world_mut(&slots_p)?;
-        if let Some(mut state) = world.get_resource_mut::<crate::vm::VmPauseState>() {
-            state.paused = true;
-        }
+        pause_mut(&slots_p)?.paused = true;
         Ok(())
     });
 
     let slots_r = Rc::clone(slots);
     engine.register_fn("resume", move || -> Result<(), Box<rhai::EvalAltResult>> {
-        let world = world_mut(&slots_r)?;
-        if let Some(mut state) = world.get_resource_mut::<crate::vm::VmPauseState>() {
-            state.paused = false;
-        }
+        pause_mut(&slots_r)?.paused = false;
         Ok(())
     });
 
     let slots_ip = Rc::clone(slots);
     engine.register_fn(
         "is_paused",
-        move || -> Result<bool, Box<rhai::EvalAltResult>> {
-            let world = world_ref(&slots_ip)?;
-            Ok(world
-                .get_resource::<crate::vm::VmPauseState>()
-                .map(|s| s.paused)
-                .unwrap_or(false))
-        },
+        move || -> Result<bool, Box<rhai::EvalAltResult>> { Ok(pause_ref(&slots_ip)?.paused) },
     );
 }
 
@@ -1422,6 +1403,54 @@ fn events_ref(slots: &Rc<Slots>) -> Result<&EventStore, Box<rhai::EvalAltResult>
     with_events_mut(slots)
         .map(|s| &*s)
         .ok_or_else(|| into_rhai_error(NO_ACTIVE_EVENTS.to_owned()))
+}
+
+const NO_ACTIVE_RNG: &str = "script host function called with no active VmRng";
+const NO_ACTIVE_TIME: &str = "script host function called with no active Time";
+const NO_ACTIVE_PAUSE: &str = "script host function called with no active Pause";
+
+/// Get a `&mut VmRng` for the current tick, or a Rhai error if no tick is
+/// active.
+#[allow(
+    clippy::mut_from_ref,
+    reason = "scoped raw pointer bridge; soundness ensured by exclusive single-threaded execution"
+)]
+fn rng_mut(slots: &Rc<Slots>) -> Result<&mut VmRng, Box<rhai::EvalAltResult>> {
+    let ptr = slots.rng.get();
+    if ptr.is_null() {
+        return Err(into_rhai_error(NO_ACTIVE_RNG.to_owned()));
+    }
+    // SAFETY: see module doc.
+    Ok(unsafe { &mut *ptr })
+}
+
+/// Get a `&Time<()>` for the current tick.
+fn time_ref(slots: &Rc<Slots>) -> Result<&Time<()>, Box<rhai::EvalAltResult>> {
+    let ptr = slots.time.get();
+    if ptr.is_null() {
+        return Err(into_rhai_error(NO_ACTIVE_TIME.to_owned()));
+    }
+    // SAFETY: see module doc.
+    Ok(unsafe { &*ptr })
+}
+
+/// Get a `&mut Pause` for the current tick.
+#[allow(
+    clippy::mut_from_ref,
+    reason = "scoped raw pointer bridge; soundness ensured by exclusive single-threaded execution"
+)]
+fn pause_mut(slots: &Rc<Slots>) -> Result<&mut Pause, Box<rhai::EvalAltResult>> {
+    let ptr = slots.pause.get();
+    if ptr.is_null() {
+        return Err(into_rhai_error(NO_ACTIVE_PAUSE.to_owned()));
+    }
+    // SAFETY: see module doc.
+    Ok(unsafe { &mut *ptr })
+}
+
+/// Get a `&Pause` for the current tick.
+fn pause_ref(slots: &Rc<Slots>) -> Result<&Pause, Box<rhai::EvalAltResult>> {
+    pause_mut(slots).map(|p| &*p)
 }
 
 /// Wrap a host-side error string into a Rhai runtime error.
