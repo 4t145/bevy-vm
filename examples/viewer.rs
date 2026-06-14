@@ -47,7 +47,7 @@ fn main() {
 fn default_world() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join(WORLDS_DIR)
-        .join("counter_sphere")
+        .join("orbit")
 }
 
 fn build_vm(

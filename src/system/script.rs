@@ -1026,6 +1026,9 @@ mod render_host {
             .next()
             .ok_or_else(|| into_rhai_error("attach_mesh: empty spec".to_owned()))?;
         let cache_key = format!("{}:{:?}", variant, payload);
+        if !world.contains_resource::<AttachCache>() {
+            world.insert_resource(AttachCache::default());
+        }
         if let Some(handle) = world.resource::<AttachCache>().meshes.get(&cache_key) {
             return Ok(handle.clone());
         }
