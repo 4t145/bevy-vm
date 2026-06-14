@@ -34,17 +34,13 @@ let oz = get(player, "Position", "z") + fz * 0.6;
 let speed = h::bullet_speed();
 
 let b = spawn_entity();
-set(b, "Position", "x", ox);
-set(b, "Position", "y", oy);
-set(b, "Position", "z", oz);
-set(b, "Mesh3dRender", "", #{
-    mesh: #{ "Sphere": #{ radius: h::bullet_radius() } },
-    material: #{ "Pbr": #{
-        base_color: h::color_bullet(),
-        metallic: 0.5,
-        roughness: 0.2,
-        emissive: #{ red: 2.0, green: 1.5, blue: 0.0, alpha: 1.0 },
-    } },
+set_translation(b, [ox, oy, oz]);
+attach_mesh(b, #{ Sphere: h::bullet_radius() });
+attach_pbr(b, #{
+    base_color: h::color_bullet(),
+    metallic: 0.5,
+    roughness: 0.2,
+    emissive: srgba(2.0, 1.5, 0.0, 1.0),
 });
 set(b, "bullet::Bullet", "vx", fx * speed);
 set(b, "bullet::Bullet", "vy", fy * speed);

@@ -1,13 +1,9 @@
 // counter_sphere：第一人称射击 demo（neta counter-strike）。
 //
-// 玩家长方体 + 烧火棍贴在相机；WASD 移动，Q/E 转 yaw，鼠标左键开火；
+// 玩家长方体 + 烧火棍贴在相机；WASD 移动，鼠标转视角，左键开火；
 // 5 个球体敌人在随机障碍地形里晃悠，全部击杀即胜利。
 //
-// plugin 拓扑：
-//   player ← camera ← gun
-//                 ← shoot ← bullet ← combat
-//   terrain（独立）   enemy（依赖 player + terrain）
-//   crosshair / hud / win 独立
+// 视觉由 player 端的 setup.rhai 在第一帧 attach。
 (
     seed: Some(20251214),
     modules: [
@@ -24,47 +20,18 @@
         "win",
         "cursor",
     ],
+    components: [
+        (name: "Ground", default: ()),
+    ],
     entities: [
-        // 玩家：长方体（第一人称看不见自己，但调试到第三人称会有）。
+        // 玩家：单例。视觉 / Transform 由 player::setup.rhai 第一帧挂上。
         (components: {
-            "player::Player": (hp: 100, max_hp: 100, speed: 6.0, turn_speed: 2.5, mouse_sensitivity: 0.0025),
-            "Position": (x: 0.0, y: 1.0, z: 0.0),       // y=1.0：长方体中心
-            "Rotation": (x: 0.0, y: 0.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Cube": (size: [0.6, 1.8, 0.6]) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.30, green: 0.70, blue: 1.00, alpha: 1.0) },
-                    metallic: 0.2,
-                    roughness: 0.45,
-                ) },
+            "player::Player": (
+                hp: 100, max_hp: 100,
+                speed: 6.0, turn_speed: 2.5,
+                mouse_sensitivity: 0.0025,
             ),
         }),
-        // 地面：60×60 灰绿色。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Plane": (half_extents: [30.0, 30.0]) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.18, green: 0.20, blue: 0.16, alpha: 1.0) },
-                    roughness: 0.95,
-                ) },
-            ),
-        }),
-        // 第一人称相机：每帧由 camera plugin 挪到玩家头部。
-        (components: {
-            "Position": (x: 0.0, y: 1.7, z: 0.0),
-            "Camera3d": (
-                projection: { "Perspective": (
-                    fov_degrees: 75.0,
-                    near: 0.1,
-                    far: 200.0,
-                ) },
-                target: [0.0, 1.7, -1.0],
-                up: [0.0, 1.0, 0.0],
-                order: 0,
-                active: true,
-                clear_color: Some({ "Srgba": (red: 0.45, green: 0.55, blue: 0.70, alpha: 1.0) }),
-            ),
-        }),
+        (components: { "Ground": () }),
     ],
 )

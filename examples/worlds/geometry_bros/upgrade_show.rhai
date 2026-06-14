@@ -104,7 +104,7 @@ fn spawn_card(parent, kind, title, desc) {
         },
     });
     set(card, "Button", "", #{});
-    set(card, "Pickable", "", #{});
+    attach_pickable(card);
     set(card, "BackgroundColor", "", h::color_card_bg());
     set(card, "UpgradeCard", "kind", kind);
     set_parent(card, parent);

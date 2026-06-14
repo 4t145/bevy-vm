@@ -17,16 +17,12 @@ for _i in 0..COUNT {
     let x = angle.cos() * r;
     let z = angle.sin() * r;
     let e = spawn_entity();
-    set(e, "Position", "x", x);
-    set(e, "Position", "y", h::enemy_radius());
-    set(e, "Position", "z", z);
-    set(e, "Mesh3dRender", "", #{
-        mesh: #{ "Sphere": #{ radius: h::enemy_radius() } },
-        material: #{ "Pbr": #{
-            base_color: h::color_enemy(),
-            metallic: 0.2,
-            roughness: 0.4,
-        } },
+    set_translation(e, [x, h::enemy_radius(), z]);
+    attach_mesh(e, #{ Sphere: h::enemy_radius() });
+    attach_pbr(e, #{
+        base_color: h::color_enemy(),
+        metallic: 0.2,
+        roughness: 0.4,
     });
     set(e, "Enemy", "hp", 50);
     set(e, "Enemy", "speed", random_range(1.0, 2.0));

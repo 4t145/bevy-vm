@@ -44,17 +44,13 @@ let lifetime = get(player, "player::Player", "bullet_lifetime");
 
 // Spawn projectile。
 let bullet = spawn_entity();
-set(bullet, "Position", "x", px);
-set(bullet, "Position", "y", h::ground_y());
-set(bullet, "Position", "z", pz);
-set(bullet, "Mesh3dRender", "", #{
-    mesh: #{ "Sphere": #{ radius: 0.15 } },
-    material: #{ "Pbr": #{
-        base_color: h::color_projectile(),
-        metallic: 0.6,
-        roughness: 0.25,
-        emissive: #{ red: 2.0, green: 1.5, blue: 0.0, alpha: 1.0 },
-    } },
+set_translation(bullet, [px, h::ground_y(), pz]);
+attach_mesh(bullet, #{ Sphere: 0.15 });
+attach_pbr(bullet, #{
+    base_color: h::color_projectile(),
+    metallic: 0.6,
+    roughness: 0.25,
+    emissive: srgba(2.0, 1.5, 0.0, 1.0),
 });
 set(bullet, "projectile::Projectile", "vx", dir_x * speed);
 set(bullet, "projectile::Projectile", "vz", dir_z * speed);

@@ -49,22 +49,21 @@ if medium_threshold < 30 { medium_threshold = 30; }
 // 三种敌人——都是多面体（与主角的球体形成对比）：
 // small  = 四面体（最少面、最尖锐，符合"快/小"的语感）
 // medium = 立方体
-// large  = 八面体（用 Cuboid 拉伸略扁，立体且醒目；rhai mesh 没有 Octahedron
-//          所以用 Cylinder 顶/底六边形——视觉上像多面体棱柱）
+// large  = 八面体（用 Cylinder 顶/底六边形）
 if roll >= large_threshold {
     kind = "large";
     hp = 40; damage = 20; speed = 1.5; xp_reward = 5;
-    mesh = #{ "Cylinder": #{ radius: 0.55, height: 1.0 } };
+    mesh = #{ Cylinder: [0.55, 1.0] };
     color = h::color_enemy_large();
 } else if roll >= medium_threshold {
     kind = "medium";
     hp = 20; damage = 10; speed = 2.0; xp_reward = 2;
-    mesh = #{ "Cube": #{ size: [0.8, 0.8, 0.8] } };
+    mesh = #{ Cuboid: [0.8, 0.8, 0.8] };
     color = h::color_enemy_medium();
 } else {
     kind = "small";
     hp = 10; damage = 5; speed = 2.5; xp_reward = 1;
-    mesh = #{ "Tetrahedron": #{ size: 0.7 } };
+    mesh = #{ Tetrahedron: 0.7 };
     color = h::color_enemy_small();
 }
 
@@ -84,16 +83,12 @@ if ez >  bound { ez =  bound; }
 if ez < -bound { ez = -bound; }
 
 let e = spawn_entity();
-set(e, "Position", "x", ex);
-set(e, "Position", "y", h::ground_y());
-set(e, "Position", "z", ez);
-set(e, "Mesh3dRender", "", #{
-    mesh: mesh,
-    material: #{ "Pbr": #{
-        base_color: color,
-        metallic: 0.1,
-        roughness: 0.5,
-    } },
+set_translation(e, [ex, h::ground_y(), ez]);
+attach_mesh(e, mesh);
+attach_pbr(e, #{
+    base_color: color,
+    metallic: 0.1,
+    roughness: 0.5,
 });
 set(e, "Enemy", "kind", kind);
 set(e, "Enemy", "hp", hp);

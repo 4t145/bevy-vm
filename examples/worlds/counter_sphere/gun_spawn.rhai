@@ -9,15 +9,11 @@ if get(s, "GunSpawnState", "spawned") == 1 { return; }
 set(s, "GunSpawnState", "spawned", 1);
 
 let g = spawn_entity();
-set(g, "Position", "x", 0.0);
-set(g, "Position", "y", 0.5);
-set(g, "Position", "z", 0.0);
-set(g, "Mesh3dRender", "", #{
-    mesh: #{ "Cube": #{ size: [0.08, 0.08, 1.2] } },   // 细长棍
-    material: #{ "Pbr": #{
-        base_color: h::color_gun(),
-        metallic: 0.0,
-        roughness: 0.85,
-    } },
+set_translation(g, [0.0, 0.5, 0.0]);
+attach_mesh(g, #{ Cuboid: [0.08, 0.08, 1.2] });   // 细长棍
+attach_pbr(g, #{
+    base_color: h::color_gun(),
+    metallic: 0.0,
+    roughness: 0.85,
 });
 set(g, "Gun", "", #{});

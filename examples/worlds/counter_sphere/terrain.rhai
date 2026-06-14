@@ -26,16 +26,12 @@ for _i in 0..COUNT {
             let d = random_range(0.8, 2.4);
             let height = random_range(1.0, 3.0);
             let e = spawn_entity();
-            set(e, "Position", "x", x);
-            set(e, "Position", "y", height * 0.5);
-            set(e, "Position", "z", z);
-            set(e, "Mesh3dRender", "", #{
-                mesh: #{ "Cube": #{ size: [w, height, d] } },
-                material: #{ "Pbr": #{
-                    base_color: h::color_obstacle(),
-                    metallic: 0.05,
-                    roughness: 0.85,
-                } },
+            set_translation(e, [x, height * 0.5, z]);
+            attach_mesh(e, #{ Cuboid: [w, height, d] });
+            attach_pbr(e, #{
+                base_color: h::color_obstacle(),
+                metallic: 0.05,
+                roughness: 0.85,
             });
             set(e, "Obstacle", "", #{});
             placed = true;

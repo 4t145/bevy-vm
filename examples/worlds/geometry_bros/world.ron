@@ -1,13 +1,12 @@
 // 几何体兄弟（Geometry Bros）：仿土豆兄弟 / Vampire Survivors 的 MVP，
 // 完全用 Bevy 内置几何体素材，3D 正交俯视。
 //
-// 玩家蓝方块在 (0,0,0)，相机俯视。WASD 移动；自动朝最近敌人发射黄球。
-// 敌人按时间从屏幕外圆周 spawn，朝玩家走。打死有几率掉经验，攒满升级，
-// 升级时暂停弹三选一。HP 耗尽 GameOver。
-//
-// plugin 拓扑（dependencies = 类型注册顺序，before/after = 调度顺序）：
+// module 拓扑（dependencies = 类型注册顺序，before/after = 调度顺序）：
 //   player ← enemy ← shooting ← projectile ← combat ← xp ← level ← upgrade ← death
 //   pause / hud / camera 横向独立
+//
+// 视觉组件由各 module 自己 spawn 或 setup.rhai 在第一帧 attach（player /
+// 地面 / 相机集中在 player module 的 setup）。
 (
     seed: Some(20251211),
     modules: [
@@ -25,10 +24,12 @@
         "death",
         "camera",
     ],
+    components: [
+        // 地面 marker——player::setup.rhai 第一帧 attach mesh。
+        (name: "Ground", default: ()),
+    ],
     entities: [
-        // 玩家：单例，带 Player 组件 + Position（xz 平面，y=0.5 让球底贴地）。
-        // 主角是球体——和敌人（多面体：cuboid / tetrahedron / capsule）形成
-        // 视觉对比，玩家在战场里一眼可识别。
+        // 玩家：单例。视觉 / Transform 由 player::setup.rhai 第一帧挂上。
         (components: {
             "player::Player": (
                 hp: 100,
@@ -43,52 +44,8 @@
                 kills: 0,
                 survived: 0.0,
             ),
-            "Position": (x: 0.0, y: 0.5, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Sphere": (radius: 0.5) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.35, green: 0.65, blue: 1.0, alpha: 1.0) },
-                    metallic: 0.3,
-                    roughness: 0.35,
-                ) },
-            ),
         }),
-        // 地面：30×30 平面。Plane 组件的 half_extents 定义半边长。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Plane": (half_extents: [20.0, 20.0]) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.18, green: 0.18, blue: 0.20, alpha: 1.0) },
-                    roughness: 0.95,
-                ) },
-            ),
-        }),
-        // 主相机：3D 正交「轻倾斜俯视」。
-        //
-        // 纯俯视（相机正上方朝下看）下，球体 / 多面体只看到顶面，体积感全失。
-        // 抬高 + 后撤让相机略斜——大致对应 60° 俯视角，玩家能看到自己的
-        // 顶 + 前面，敌人轮廓也立体。
-        //
-        // 相机位置 (0, 14, 8) 朝原点：14 高、向 +Z 后撤 8——atan(14/8) ≈ 60°。
-        // 这个偏移由 camera plugin 每帧维持（相机始终在玩家斜后上）。
-        //
-        // 正交投影 + FixedVertical 让屏幕高度 = 20 世界单位，缩放与玩家位置无关。
-        (components: {
-            "Position": (x: 0.0, y: 14.0, z: 8.0),
-            "Camera3d": (
-                projection: { "Orthographic": (
-                    scaling_mode: { "FixedVertical": (viewport_height: 22.0) },
-                    scale: 1.0,
-                    near: 0.1,
-                    far: 100.0,
-                ) },
-                target: [0.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                order: 0,
-                active: true,
-                clear_color: Some({ "Srgba": (red: 0.06, green: 0.07, blue: 0.10, alpha: 1.0) }),
-            ),
-        }),
+        // 地面 marker。
+        (components: { "Ground": () }),
     ],
 )

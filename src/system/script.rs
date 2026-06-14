@@ -310,6 +310,18 @@ fn register_value_access(
               component: &str,
               path: &str|
               -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+            // Position / Rotation 是 AI 友好的 alias——透明转发到 Bevy Transform
+            // 的 translation / rotation。让旧 worlds 仍能 `get(e, "Position", "x")`
+            // 而不必到处改成 get_translation()。
+            #[cfg(feature = "bevy-bridge")]
+            if let Some(value) = transform_alias_get(
+                world_ref(&slots_get)?,
+                decode_entity(entity),
+                component,
+                path,
+            ) {
+                return Ok(value);
+            }
             let world = world_ref(&slots_get)?;
             let resolved = resolve_component_name(&plug, component, |n| reg.resolve(n).is_some());
             let value = world_access::get(world, &reg, decode_entity(entity), &resolved, path)
@@ -329,6 +341,16 @@ fn register_value_access(
               value: Dynamic|
               -> Result<(), Box<rhai::EvalAltResult>> {
             let ron_value = convert::from_dynamic(value).map_err(error_to_rhai)?;
+            #[cfg(feature = "bevy-bridge")]
+            if transform_alias_set(
+                world_mut(&slots_set)?,
+                decode_entity(entity),
+                component,
+                path,
+                &ron_value,
+            ) {
+                return Ok(());
+            }
             let world = world_mut(&slots_set)?;
             let resolved = resolve_component_name(&plug, component, |n| reg.resolve(n).is_some());
             world_access::set(
@@ -358,6 +380,100 @@ fn register_value_access(
                 .map_err(error_to_rhai)
         },
     );
+}
+
+/// `Position.{x,y,z}` 透明读：转发到 Bevy `Transform.translation`。
+/// 不存在 Transform 时返回 `Some(0.0)` —— 兼容旧 worlds "声明即存在" 语义
+/// （脚本可在 set 之前 get）。
+#[cfg(feature = "bevy-bridge")]
+fn transform_alias_get(
+    world: &World,
+    entity: Entity,
+    component: &str,
+    path: &str,
+) -> Option<Dynamic> {
+    if component != "Position" && component != "Rotation" {
+        return None;
+    }
+    let transform = world
+        .get_entity(entity)
+        .ok()
+        .and_then(|e| e.get::<bevy::prelude::Transform>().copied())
+        .unwrap_or_default();
+    if component == "Position" {
+        let v = match path {
+            "x" => transform.translation.x as f64,
+            "y" => transform.translation.y as f64,
+            "z" => transform.translation.z as f64,
+            _ => return None,
+        };
+        return Some(Dynamic::from_float(v));
+    }
+    // Rotation：读 quat 反推 YXZ 欧拉（弧度→度）。
+    let (yaw, pitch, roll) = transform.rotation.to_euler(bevy::math::EulerRot::YXZ);
+    let v = match path {
+        "x" => pitch.to_degrees() as f64,
+        "y" => yaw.to_degrees() as f64,
+        "z" => roll.to_degrees() as f64,
+        _ => return None,
+    };
+    Some(Dynamic::from_float(v))
+}
+
+/// `Position.{x,y,z}` / `Rotation.{x,y,z}` 透明写：原地改 Bevy Transform。
+/// 缺 Transform 自动补一个 identity。命中并写入返回 true，否则 false 让 set
+/// 走通用 reflect 路径。
+#[cfg(feature = "bevy-bridge")]
+fn transform_alias_set(
+    world: &mut World,
+    entity: Entity,
+    component: &str,
+    path: &str,
+    value: &serde_json::Value,
+) -> bool {
+    use bevy::math::EulerRot;
+    use bevy::prelude::{Quat, Transform};
+    if component != "Position" && component != "Rotation" {
+        return false;
+    }
+    let v = match value.as_f64() {
+        Some(f) => f as f32,
+        None => return false,
+    };
+    let mut em = match world.get_entity_mut(entity) {
+        Ok(em) => em,
+        Err(_) => return false,
+    };
+    let mut transform = em.get::<Transform>().copied().unwrap_or_default();
+    if component == "Position" {
+        match path {
+            "x" => transform.translation.x = v,
+            "y" => transform.translation.y = v,
+            "z" => transform.translation.z = v,
+            _ => return false,
+        }
+    } else {
+        // Rotation：path 是 x/y/z（pitch/yaw/roll，单位度）。读现有 quat 拿
+        // 当前三轴值，改一轴，再合成新 quat。
+        let (yaw, pitch, roll) = transform.rotation.to_euler(EulerRot::YXZ);
+        let mut yaw_d = yaw.to_degrees();
+        let mut pitch_d = pitch.to_degrees();
+        let mut roll_d = roll.to_degrees();
+        match path {
+            "x" => pitch_d = v,
+            "y" => yaw_d = v,
+            "z" => roll_d = v,
+            _ => return false,
+        }
+        transform.rotation = Quat::from_euler(
+            EulerRot::YXZ,
+            yaw_d.to_radians(),
+            pitch_d.to_radians(),
+            roll_d.to_radians(),
+        );
+    }
+    em.insert(transform);
+    true
 }
 
 /// 注册实体生命周期：`spawn_entity() -> id`、`despawn(id) -> bool`、`is_alive(id) -> bool`。
@@ -1083,6 +1199,32 @@ mod render_host {
                         text.0 = content.to_owned();
                     }
                 }
+                Ok(())
+            },
+        );
+
+        // ---- look_at(entity, target_xyz, up_xyz) ------------------------
+        // 设 entity 的 Transform 为"位置不动、旋转使 -Z 指向 target"。
+        // 相机跟随的常用工具——之前 Camera3d.target 的等价。
+        let slots_la = Rc::clone(slots);
+        engine.register_fn(
+            "look_at",
+            move |entity: i64,
+                  target: Dynamic,
+                  up: Dynamic|
+                  -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_la)?;
+                let entity = decode_entity(entity);
+                let target = vec3_from(target).unwrap_or(Vec3::ZERO);
+                let up = vec3_from(up).unwrap_or(Vec3::Y);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                let translation = em
+                    .get::<Transform>()
+                    .map(|t| t.translation)
+                    .unwrap_or(Vec3::ZERO);
+                em.insert(Transform::from_translation(translation).looking_at(target, up));
                 Ok(())
             },
         );
