@@ -658,9 +658,7 @@ fn register_ui_helpers(engine: &mut Engine) {
         inner.insert(key("alpha").into(), Dynamic::from_float(1.0));
         wrap("Srgba", Dynamic::from(inner))
     });
-    engine.register_fn("px", move |v: FLOAT| {
-        wrap("Px", Dynamic::from_float(v))
-    });
+    engine.register_fn("px", move |v: FLOAT| wrap("Px", Dynamic::from_float(v)));
     engine.register_fn("percent", move |v: FLOAT| {
         wrap("Percent", Dynamic::from_float(v))
     });
@@ -670,10 +668,11 @@ fn register_ui_helpers(engine: &mut Engine) {
 /// / attach_camera_3d / attach_camera_2d / attach_text / attach_scene
 /// / set_transform / set_translation`。直接在主 World 操作 Bevy 原生组件。
 #[cfg(feature = "bevy-bridge")]
+#[allow(dead_code, unused_imports, clippy::collapsible_if)]
 mod render_host {
     use super::{
-        VmId, VmTag, decode_entity, error_to_rhai, into_rhai_error, world_mut, with_world_mut,
-        Slots,
+        Slots, VmId, VmTag, decode_entity, error_to_rhai, into_rhai_error, with_world_mut,
+        world_mut,
     };
     use bevy::asset::{AssetServer, Assets, Handle};
     use bevy::color::Color;
@@ -748,9 +747,21 @@ mod render_host {
         let value = map.get(name)?.clone();
         if let Some(arr) = try_into_array(value.clone()) {
             if arr.len() == 3 {
-                let x = arr[0].as_float().ok().map(|f| f as f32).or_else(|| arr[0].as_int().ok().map(|i| i as f32))?;
-                let y = arr[1].as_float().ok().map(|f| f as f32).or_else(|| arr[1].as_int().ok().map(|i| i as f32))?;
-                let z = arr[2].as_float().ok().map(|f| f as f32).or_else(|| arr[2].as_int().ok().map(|i| i as f32))?;
+                let x = arr[0]
+                    .as_float()
+                    .ok()
+                    .map(|f| f as f32)
+                    .or_else(|| arr[0].as_int().ok().map(|i| i as f32))?;
+                let y = arr[1]
+                    .as_float()
+                    .ok()
+                    .map(|f| f as f32)
+                    .or_else(|| arr[1].as_int().ok().map(|i| i as f32))?;
+                let z = arr[2]
+                    .as_float()
+                    .ok()
+                    .map(|f| f as f32)
+                    .or_else(|| arr[2].as_int().ok().map(|i| i as f32))?;
                 return Some(Vec3::new(x, y, z));
             }
         }
@@ -859,9 +870,12 @@ mod render_host {
                 let entity = decode_entity(entity);
                 ensure_tagged(world, entity, vm_id)?;
                 let (camera, projection, transform) = build_camera_3d(opts);
-                world
-                    .entity_mut(entity)
-                    .insert((Camera3d::default(), camera, projection, transform));
+                world.entity_mut(entity).insert((
+                    Camera3d::default(),
+                    camera,
+                    projection,
+                    transform,
+                ));
                 Ok(())
             },
         );
@@ -1034,7 +1048,11 @@ mod render_host {
         }
         let f32_at = |arr: &rhai::Array, idx: usize, default: f32| -> f32 {
             arr.get(idx)
-                .and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64)))
+                .and_then(|v| {
+                    v.as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                })
                 .map(|v| v as f32)
                 .unwrap_or(default)
         };
@@ -1204,9 +1222,7 @@ mod render_host {
                 p.far = f;
             }
             if let Some(h) = float_field(&map, "viewport_height") {
-                p.scaling_mode = bevy::camera::ScalingMode::FixedVertical {
-                    viewport_height: h,
-                };
+                p.scaling_mode = bevy::camera::ScalingMode::FixedVertical { viewport_height: h };
             }
             Projection::Orthographic(p)
         } else {
@@ -1310,9 +1326,21 @@ mod render_host {
     fn vec3_from(value: Dynamic) -> Option<Vec3> {
         if let Some(arr) = try_into_array(value.clone()) {
             if arr.len() == 3 {
-                let x = arr[0].as_float().ok().map(|f| f as f32).or_else(|| arr[0].as_int().ok().map(|i| i as f32))?;
-                let y = arr[1].as_float().ok().map(|f| f as f32).or_else(|| arr[1].as_int().ok().map(|i| i as f32))?;
-                let z = arr[2].as_float().ok().map(|f| f as f32).or_else(|| arr[2].as_int().ok().map(|i| i as f32))?;
+                let x = arr[0]
+                    .as_float()
+                    .ok()
+                    .map(|f| f as f32)
+                    .or_else(|| arr[0].as_int().ok().map(|i| i as f32))?;
+                let y = arr[1]
+                    .as_float()
+                    .ok()
+                    .map(|f| f as f32)
+                    .or_else(|| arr[1].as_int().ok().map(|i| i as f32))?;
+                let z = arr[2]
+                    .as_float()
+                    .ok()
+                    .map(|f| f as f32)
+                    .or_else(|| arr[2].as_int().ok().map(|i| i as f32))?;
                 return Some(Vec3::new(x, y, z));
             }
         }
@@ -1324,7 +1352,6 @@ mod render_host {
         }
         None
     }
-
 }
 
 /// 注册 `log(msg)` 宿主：把脚本的诊断输出转发到 `tracing::info`，便于在

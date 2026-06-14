@@ -25,7 +25,8 @@ fn string(value: &serde_json::Value) -> String {
 #[test]
 fn conditional_script_branches_per_entity() {
     let mut world = bevy_ecs::world::World::new();
-    let mut vm = VmInstance::load(&mut world, world_path("combat.ron")).expect("配置应能成功构建世界");
+    let mut vm =
+        VmInstance::load(&mut world, world_path("combat.ron")).expect("配置应能成功构建世界");
     vm.tick(&mut world).expect("tick 不应失败");
 
     let mut healthy_state = None;
@@ -61,7 +62,8 @@ fn conditional_script_branches_per_entity() {
 #[test]
 fn entity_reference_via_inventory_ids() {
     let mut world = bevy_ecs::world::World::new();
-    let mut vm = VmInstance::load(&mut world, world_path("inventory.ron")).expect("配置应能成功构建世界");
+    let mut vm =
+        VmInstance::load(&mut world, world_path("inventory.ron")).expect("配置应能成功构建世界");
     vm.tick(&mut world).expect("tick 不应失败");
 
     let owners = vm.query(&mut world, "Inventory");
@@ -77,14 +79,18 @@ fn entity_reference_via_inventory_ids() {
     // 物品是独立实体：剑应存活、药水（耐久 0）应已被脚本销毁。
     let items = vm.query(&mut world, "Item");
     assert_eq!(items.len(), 1, "耐久耗尽的物品实体应已被 despawn，只剩剑");
-    let kind = string(&vm.get(&world, items[0], "Item", "kind").expect("应能读 Item.kind"));
+    let kind = string(
+        &vm.get(&world, items[0], "Item", "kind")
+            .expect("应能读 Item.kind"),
+    );
     assert_eq!(kind, "sword", "存活的物品应是剑");
 }
 
 #[test]
 fn infinite_loop_is_stopped_by_operation_limit() {
     let mut world = bevy_ecs::world::World::new();
-    let mut vm = VmInstance::load(&mut world, world_path("runaway.ron")).expect("配置应能成功构建世界");
+    let mut vm =
+        VmInstance::load(&mut world, world_path("runaway.ron")).expect("配置应能成功构建世界");
     let result = vm.tick(&mut world);
     assert!(result.is_err(), "死循环应被操作数上限中断为运行时错误");
 }

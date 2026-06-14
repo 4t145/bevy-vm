@@ -84,7 +84,10 @@ fn missing_dependency_reports_error() {
     )
     .unwrap();
 
-    let result = { let mut world = bevy_ecs::world::World::new(); VmInstance::load(&mut world, &dir) };
+    let result = {
+        let mut world = bevy_ecs::world::World::new();
+        VmInstance::load(&mut world, &dir)
+    };
     let Err(err) = result else {
         panic!("missing dependency should fail");
     };
@@ -114,7 +117,10 @@ fn dependency_cycle_reports_error() {
     std::fs::write(dir.join("a.ron"), r#"(dependencies: ["b"], entities: [])"#).unwrap();
     std::fs::write(dir.join("b.ron"), r#"(dependencies: ["a"], entities: [])"#).unwrap();
 
-    let result = { let mut world = bevy_ecs::world::World::new(); VmInstance::load(&mut world, &dir) };
+    let result = {
+        let mut world = bevy_ecs::world::World::new();
+        VmInstance::load(&mut world, &dir)
+    };
     let Err(err) = result else {
         panic!("cycle should fail");
     };

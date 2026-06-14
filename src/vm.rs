@@ -289,7 +289,7 @@ impl VmInstance {
             &mut self.rng,
             crate::random::VmRng::from_seed(0),
         ));
-        world.insert_resource(self.time.clone());
+        world.insert_resource(self.time);
         world.insert_resource(VmPauseState {
             paused: self.paused,
         });

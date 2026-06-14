@@ -115,30 +115,29 @@ impl VmEventAppExt for App {
     where
         T: Message + Clone + Send + Sync + 'static,
     {
-        let in_pump =
-            move |mut reader: MessageReader<T>, mut registry: NonSendMut<VmRegistry>| {
-                let mut count = 0usize;
-                let messages: Vec<T> = reader.read().cloned().collect();
-                if messages.is_empty() {
-                    return;
-                }
-                let ids = registry.ids();
-                for id in ids {
-                    let Some(vm) = registry.get_mut(id) else {
-                        continue;
-                    };
-                    for msg in &messages {
-                        if let Err(error) = vm.send_event::<T>(name, msg.clone()) {
-                            warn!("pump_in for `{name}` failed: {error}");
-                        } else {
-                            count += 1;
-                        }
+        let in_pump = move |mut reader: MessageReader<T>, mut registry: NonSendMut<VmRegistry>| {
+            let mut count = 0usize;
+            let messages: Vec<T> = reader.read().cloned().collect();
+            if messages.is_empty() {
+                return;
+            }
+            let ids = registry.ids();
+            for id in ids {
+                let Some(vm) = registry.get_mut(id) else {
+                    continue;
+                };
+                for msg in &messages {
+                    if let Err(error) = vm.send_event::<T>(name, msg.clone()) {
+                        warn!("pump_in for `{name}` failed: {error}");
+                    } else {
+                        count += 1;
                     }
                 }
-                if count > 0 {
-                    debug!(target: "bevy_vm::pump", "pump_in `{name}`: {count} event(s)");
-                }
-            };
+            }
+            if count > 0 {
+                debug!(target: "bevy_vm::pump", "pump_in `{name}`: {count} event(s)");
+            }
+        };
         self.add_message::<T>()
             .add_systems(Update, in_pump.before(VmTickSet));
         self
@@ -148,25 +147,24 @@ impl VmEventAppExt for App {
     where
         T: Message + Send + Sync + 'static,
     {
-        let out_pump =
-            move |mut writer: MessageWriter<T>, mut registry: NonSendMut<VmRegistry>| {
-                let ids = registry.ids();
-                for id in ids {
-                    let Some(vm) = registry.get_mut(id) else {
-                        continue;
-                    };
-                    match vm.drain_events::<T>(name) {
-                        Ok(events) => {
-                            for event in events {
-                                writer.write(event);
-                            }
-                        }
-                        Err(error) => {
-                            warn!("pump_out for `{name}` failed: {error}");
+        let out_pump = move |mut writer: MessageWriter<T>, mut registry: NonSendMut<VmRegistry>| {
+            let ids = registry.ids();
+            for id in ids {
+                let Some(vm) = registry.get_mut(id) else {
+                    continue;
+                };
+                match vm.drain_events::<T>(name) {
+                    Ok(events) => {
+                        for event in events {
+                            writer.write(event);
                         }
                     }
+                    Err(error) => {
+                        warn!("pump_out for `{name}` failed: {error}");
+                    }
                 }
-            };
+            }
+        };
         self.add_message::<T>()
             .add_systems(Update, out_pump.after(VmTickSet));
         self
