@@ -1,0 +1,35 @@
+// player plugin：玩家组件 + WASD 移动。
+//
+// Player 单例由 world.ron 直接 spawn——这里只声明组件 schema 和挂逻辑。
+(
+    components: [
+        (
+            name: "Player",
+            default: (
+                hp: 100,
+                max_hp: 100,
+                speed: 5.0,
+                attack_cooldown: 0.5,
+                attack_timer: 0.0,
+                bullet_damage: 10,
+                bullet_speed: 8.0,
+                bullet_lifetime: 2.0,
+                regen: 0.0,            // HP/秒——靠波次菜单的 regen 卡片增长
+                kills: 0,
+                survived: 0.0,
+                // 键盘状态——player.rhai 维护 edge-triggered 切换。
+                key_w: 0,
+                key_a: 0,
+                key_s: 0,
+                key_d: 0,
+            ),
+        ),
+    ],
+    systems: [
+        // 暂停时不移动（dt=0 自然冻结）；死亡时不移动（HP<=0 跳过整个 system）。
+        Script(
+            path: "player.rhai",
+            run_if: ["!is_paused()"],
+        ),
+    ],
+)

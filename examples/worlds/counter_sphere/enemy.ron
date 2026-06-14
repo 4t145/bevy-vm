@@ -1,0 +1,19 @@
+// enemy plugin：5 个球体敌人 + 简单 AI（朝玩家走，距离近时停步）。
+//
+// 第一帧 spawn 5 个，随机散布在远端；hp <= 0 → despawn + 计入 player.kills。
+(
+    dependencies: ["player", "terrain"],
+    components: [
+        (name: "Enemy", default: (hp: 50, speed: 1.5)),
+        (name: "EnemySpawnState", default: (spawned: 0)),
+    ],
+    entities: [
+        (components: { "EnemySpawnState": (spawned: 0) }),
+    ],
+    systems: [
+        // 第一帧 spawn 敌人。
+        Script(path: "enemy_spawn.rhai"),
+        // 每帧朝玩家移动；run_if 不暂停（这个 demo 无暂停，但留着钩子）。
+        Script(path: "enemy_move.rhai", after: ["player"]),
+    ],
+)

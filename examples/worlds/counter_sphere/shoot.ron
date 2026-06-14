@@ -1,0 +1,8 @@
+// shoot plugin：消费 player.fire_pressed，沿相机正前方 spawn 一发子弹。
+(
+    dependencies: ["player", "camera", "bullet"],
+    systems: [
+        // after player：读 fire_pressed 之前 player.rhai 已经从 MouseButton 写好。
+        Script(path: "shoot.rhai", after: ["player"]),
+    ],
+)

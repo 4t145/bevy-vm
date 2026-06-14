@@ -1,0 +1,16 @@
+// difficulty plugin：监听 ChangeDifficulty → 更新 Board → emit RestartGame。
+//
+// 与参考项目 bevy-lab/difficulty.rs 对齐：UI 不直接重置 Board，而是 emit
+// 一个语义事件，由 difficulty plugin 集中处理参数变更。
+(
+    dependencies: ["board", "cell"],
+    events: [
+        // 字段：which 为 "Easy" / "Med" / "Hard"。
+        (name: "ChangeDifficulty", default: (which: "")),
+    ],
+    systems: [
+        // 排在 cell 前——difficulty 处理 ChangeDifficulty 后 emit RestartGame，
+        // 同帧让 cell 消费完成清空 + reset。
+        Script(path: "difficulty.rhai", before: ["cell"]),
+    ],
+)

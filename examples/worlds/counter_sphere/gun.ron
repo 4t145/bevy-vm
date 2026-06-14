@@ -1,0 +1,17 @@
+// gun plugin：烧火棍跟随相机——位置在相机右下偏 + 一段前方，可视化武器。
+//
+// 长方体（细长）—— "烧火棍"。绕 Y 轴跟玩家 yaw 旋转。
+(
+    dependencies: ["player", "camera"],
+    components: [
+        (name: "Gun", default: ()),
+        (name: "GunSpawnState", default: (spawned: 0)),
+    ],
+    entities: [
+        (components: { "GunSpawnState": (spawned: 0) }),
+    ],
+    systems: [
+        Script(path: "gun_spawn.rhai"),
+        Script(path: "gun_follow.rhai", after: ["camera"]),
+    ],
+)

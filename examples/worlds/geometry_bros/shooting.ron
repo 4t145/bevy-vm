@@ -1,0 +1,18 @@
+// shooting plugin：自动锁定最近敌人 + 按 attack_cooldown 发射投射物。
+//
+// player.attack_timer 由 player.rhai 维护（每帧倒计 dt）；本 system 看 timer
+// <= 0 时找最近敌人发射，重置 timer 为 attack_cooldown。
+//
+// 投射物的 spawn 由本 plugin 负责，但 schema 由 projectile plugin 声明——
+// 跨 plugin 引用走全限定 `projectile::Projectile`。
+(
+    dependencies: ["player", "enemy", "projectile"],
+    systems: [
+        Script(
+            path: "shooting.rhai",
+            run_if: ["!is_paused()"],
+            // 在 player 之后跑——读到玩家本帧最新位置 + 最新 attack_timer。
+            after: ["player"],
+        ),
+    ],
+)

@@ -1,0 +1,22 @@
+// combat plugin：碰撞 + 伤害 + 死亡事件。
+//
+// O(n²) 距离检测：投射物 ↔ 敌人 + 玩家 ↔ 敌人。
+// 投射物命中：扣敌人 hp，despawn 投射物，敌人 hp ≤ 0 → emit EnemyDied。
+// 玩家碰敌人：扣玩家 hp（短时无敌？没做——直接扣 + 推开）。
+// 玩家 hp ≤ 0 → emit PlayerDied。
+//
+// 排在 projectile / enemy_move 之后——读到本帧最新位置。
+(
+    dependencies: ["player", "enemy", "projectile"],
+    events: [
+        (name: "EnemyDied", default: (entity: 0, x: 0.0, z: 0.0, xp_reward: 1)),
+        (name: "PlayerDied", default: ()),
+    ],
+    systems: [
+        Script(
+            path: "combat.rhai",
+            run_if: ["!is_paused()"],
+            after: ["projectile", "enemy"],
+        ),
+    ],
+)

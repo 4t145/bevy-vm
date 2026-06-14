@@ -1,0 +1,17 @@
+// hud plugin：屏幕上方显示 HP / XP / Lv / Time / Kills。
+//
+// 第一帧 spawn HUD 树（用 query("HudKind") 是否为空作为 once flag，与扫雷
+// 一致）。后续每帧只 refresh 文字 / bar 宽度。
+//
+// HUD 不带 run_if——暂停时仍要刷新（菜单页面背景上 HUD 数字仍可见）。
+(
+    dependencies: ["player", "level", "wave"],
+    components: [
+        // marker：kind="hp_text" / "xp_text" / "lv_text" / "time_text" / "kill_text"
+        //         / "hp_fill" / "xp_fill"
+        (name: "HudElement", default: (kind: "")),
+    ],
+    systems: [
+        Script(path: "hud.rhai"),
+    ],
+)

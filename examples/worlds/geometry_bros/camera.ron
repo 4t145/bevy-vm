@@ -1,0 +1,10 @@
+// camera plugin：相机跟随玩家——位置保持在玩家正上方 18 单位。
+//
+// 不依赖 player 移动 system 的顺序——读玩家位置不写 Player 字段，
+// 不需要 after：哪怕本帧玩家没动相机也跟（看到的是上一帧或本帧位置都 OK）。
+(
+    dependencies: ["player"],
+    systems: [
+        Script(path: "camera.rhai"),
+    ],
+)

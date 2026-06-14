@@ -1,0 +1,18 @@
+// timer plugin：维护 GameTimer.elapsed = time() - Board.start_time。
+// Board 的 start_time 由 cell plugin 在首次 reveal 时写入；这里只读。
+//
+// 用单独的 GameTimer 组件而非读 Board.start_time 直接展示——和参考项目
+// 的 `GameTimer` Resource 对齐，让 ui plugin 通过组件 query 读时间。
+(
+    dependencies: ["board"],
+    components: [
+        (name: "GameTimer", default: (elapsed: 0.0)),
+    ],
+    entities: [
+        // 单例 timer 实体——ui 通过 query("timer::GameTimer") 找它。
+        (components: { "GameTimer": (elapsed: 0.0) }),
+    ],
+    systems: [
+        Script(path: "timer.rhai"),
+    ],
+)

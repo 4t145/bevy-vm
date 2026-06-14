@@ -1,10 +1,5 @@
 (
     components: [
-        (name: "Renderable", default: (kind: "cube")),
-        // 欧拉角度（度），同步层翻译成渲染 Transform 的旋转。
-        (name: "rotation", default: (x: 0.0, y: 0.0, z: 0.0)),
-        // 缩放，同步层翻译成渲染 Transform 的 scale。
-        (name: "scale", default: (x: 1.0, y: 1.0, z: 1.0)),
         // 自转脚本用：每 tick 绕 Y 轴增加的角度（度）。
         (name: "Spin", default: (speed: 0.0)),
     ],
@@ -12,49 +7,46 @@
         // glTF 场景：一棵低多边形树。
         (components: {
             "Position": (x: -4.0, y: 0.0, z: 0.0),
-            "scale": (x: 4.0, y: 4.0, z: 4.0),
-            "Renderable": (kind: "scene", asset: "models/tree.glb#Scene0"),
+            "Scale": (x: 4.0, y: 4.0, z: 4.0),
+            "SceneRender": (asset: "models/tree.glb#Scene0"),
             "Spin": (speed: 0.6),
         }),
         // glTF 场景：一个宝箱。
         (components: {
             "Position": (x: 0.0, y: 0.0, z: 0.0),
-            "scale": (x: 4.0, y: 4.0, z: 4.0),
-            "Renderable": (kind: "scene", asset: "models/chest.glb#Scene0"),
+            "Scale": (x: 4.0, y: 4.0, z: 4.0),
+            "SceneRender": (asset: "models/chest.glb#Scene0"),
             "Spin": (speed: 1.0),
         }),
         // glTF 场景：一块石头。
         (components: {
             "Position": (x: 4.0, y: 0.0, z: 0.0),
-            "scale": (x: 4.0, y: 4.0, z: 4.0),
-            "Renderable": (kind: "scene", asset: "models/rock.glb#Scene0"),
+            "Scale": (x: 4.0, y: 4.0, z: 4.0),
+            "SceneRender": (asset: "models/rock.glb#Scene0"),
             "Spin": (speed: 0.8),
         }),
         // 程序图元 + PBR 材质：发光的金属球。
         (components: {
             "Position": (x: -2.0, y: 3.0, z: 0.0),
-            "Renderable": (
-                kind: "sphere",
-                size: 1.2,
-                material: (
-                    base_color: [0.9, 0.6, 0.2],
+            "Mesh3dRender": (
+                mesh: { "Sphere": (radius: 0.6) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.9, green: 0.6, blue: 0.2, alpha: 1.0) },
                     metallic: 1.0,
                     roughness: 0.25,
-                    emissive: [0.6, 0.3, 0.0],
-                ),
+                    emissive: (red: 0.6, green: 0.3, blue: 0.0, alpha: 1.0),
+                ) },
             ),
         }),
         // 程序图元 + 半透明材质：磨砂玻璃方块。
         (components: {
             "Position": (x: 2.0, y: 3.0, z: 0.0),
-            "Renderable": (
-                kind: "cube",
-                size: 1.5,
-                material: (
-                    base_color: [0.4, 0.7, 0.9],
+            "Mesh3dRender": (
+                mesh: { "Cube": (size: [1.5, 1.5, 1.5]) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.4, green: 0.7, blue: 0.9, alpha: 0.5) },
                     roughness: 0.1,
-                    alpha: 0.5,
-                ),
+                ) },
             ),
             "Spin": (speed: 1.5),
         }),

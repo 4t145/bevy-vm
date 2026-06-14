@@ -1,3 +1,3 @@
 for e in query("Health") {
-    add(e, "Health", "value", -1.0);
+    set(e, "Health", "value", get(e, "Health", "value") - 1.0);
 }

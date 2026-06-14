@@ -6,17 +6,47 @@ edition = "2024"
 [dependencies]
 bevy_ecs = "0.18"
 bevy_reflect = "0.18"
+# bevy_color 在 headless 也用——颜色字段现在是 bevy::color::Color，
+# 走 reflect 序列化路径，不依赖 bevy-bridge feature。
+bevy_color = { version = "0.18", features = ["bevy_reflect"] }
+# bevy_time 在 headless 也用——直接复用 Bevy 的 Time<()> 资源，
+# 不重造时间类型。default-features = false 跳过 TimePlugin（依赖 bevy_app
+# 的 schedule 注册），我们走 World resource 直接 advance_by。
+bevy_time = { version = "0.18", default-features = false, features = ["std", "bevy_reflect"] }
 serde = { version = "1", features = ["derive"] }
-ron = "0.8"
+serde_json = "1"
+# 决定性 RNG：ChaCha8 速度快、状态小、流可重现——VM 默认走它，
+# 配置 / 测试需要的"同样输入 → 同样输出"承诺由此成立。
+rand = "0.9"
+rand_chacha = "0.9"
+# 配置文本解析器：每种格式由对应 cargo feature 决定是否开。
+ron = { version = "0.12", optional = true }
 thiserror = "2"
 rhai = "1.25"
+tracing = "0.1"
 # basis-universal: 支持 KHR_texture_basisu（Basis 压缩纹理）的 glTF，许多线上资产用它。
-bevy = { version = "0.18", optional = true, features = ["basis-universal"] }
+# serialize: 让 bevy_input 等 crate 的事件类型自动带 serde——VM 事件桥按名字
+# 直接 send_event::<T> 进出，无需任何 wrapper。
+bevy = { version = "0.18", optional = true, features = ["basis-universal", "serialize"] }
 
 [features]
-# 图形渲染层（同步层 + viewer）。默认关闭，避免日常 test/clippy 编译整个 bevy。
-render = ["dep:bevy"]
+# 默认开 Bevy 主世界桥 + 常用配置格式。headless / 服务端 / CI 场景可
+# `default-features = false` 关掉 Bevy。
+default = ["bevy-bridge", "config-json", "config-ron"]
+# 与 Bevy 主世界的桥：拉 dep:bevy，并启用渲染同步层、相机/输入/picking
+# 桥、事件桥、viewer 入口等。语义上不只是"渲染"，所以名字以"桥"为准。
+bevy-bridge = ["dep:bevy"]
+# 配置文本格式后端。每种格式独立 gate，默认开 json + ron。yaml/toon 当前是
+# 占位变体，启用后调用会返回 Parse 错误，等真正接上对应解析器后再去除占位。
+config-json = []
+config-ron = ["dep:ron"]
+config-yaml = []
+config-toon = []
 
 [[example]]
 name = "viewer"
-required-features = ["render"]
+required-features = ["bevy-bridge"]
+
+[[example]]
+name = "drag"
+required-features = ["bevy-bridge"]

@@ -17,11 +17,10 @@ fn world_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn number(value: &ron::Value) -> f64 {
-    match value {
-        ron::Value::Number(n) => n.into_f64(),
-        other => panic!("期望数值，得到 {other:?}"),
-    }
+fn number(value: &serde_json::Value) -> f64 {
+    value
+        .as_f64()
+        .unwrap_or_else(|| panic!("期望数值，得到 {value:?}"))
 }
 
 #[test]

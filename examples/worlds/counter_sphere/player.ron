@@ -1,0 +1,28 @@
+// player plugin：玩家长方体 + WASD 移动 + Q/E 转 yaw + HP。
+//
+// 第一人称：玩家本体看不见（相机贴在头部）；但 plugins 里仍 spawn
+// 长方体——这样切换到第三人称 / 调试时立即可见，不用改 schema。
+(
+    components: [
+        (
+            name: "Player",
+            default: (
+                hp: 100,
+                max_hp: 100,
+                speed: 6.0,
+                turn_speed: 2.5,
+                yaw: 0.0,            // 弧度，0 = 朝向 -Z，绕 Y 旋转（鼠标 dx）
+                pitch: 0.0,          // 弧度，正值仰视、负值俯视（鼠标 dy）
+                mouse_sensitivity: 0.0025,
+                attack_cooldown: 0.35,
+                attack_timer: 0.0,
+                kills: 0,
+                key_w: 0, key_a: 0, key_s: 0, key_d: 0,
+                fire_pressed: 0,     // 鼠标左键 edge-trigger 缓存
+            ),
+        ),
+    ],
+    systems: [
+        Script(path: "player.rhai"),
+    ],
+)

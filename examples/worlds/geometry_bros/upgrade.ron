@@ -1,0 +1,45 @@
+// upgrade plugin：波次结束加强菜单 UI。
+//
+// 监听 wave::WaveCompleted → 弹三张随机加强卡片（含一张固定的 Full Heal）。
+// 点击卡片 → 应用属性 + emit UpgradePicked（让 pause 解除暂停）+ despawn 卡片。
+//
+// 卡片是 UI 节点（Bevy bevy_ui::Node），通过现有 ui_bridge 投影到主 World。
+// 卡片挂 Pickable + UpgradeCard 标记，PickClick observer 把点击转为
+// PickClickEvent → upgrade_pick 路由到 emit UpgradePicked。
+(
+    dependencies: ["wave", "pause", "player"],
+    components: [
+        (
+            // kind 取值见 upgrade_show.rhai 里的池子：
+            // heal / max_hp / speed / fire_rate / damage / regen
+            name: "UpgradeCard",
+            default: (kind: ""),
+        ),
+        (
+            name: "UpgradeRoot",    // 整个升级面板的根节点 marker
+            default: (),
+        ),
+        // hover 状态：value=1 表示鼠标当前悬浮在该 UI 元素上。
+        // 由 upgrade_hover 维护、upgrade_hover 重绘背景颜色。
+        (name: "Hovered", default: (value: 0)),
+    ],
+    systems: [
+        // 监听 wave::WaveCompleted 弹卡片——必须看到 wave_tick 本帧 emit
+        // 的事件。注意只 after 具体的 wave_tick，不能 after 整个 wave set，
+        // 否则会和 wave_advance(after upgrade) 形成环。
+        Script(
+            path: "upgrade_show.rhai",
+            after: ["wave::wave_tick"],
+        ),
+        // 处理 PickClick——卡片被点选 → 应用 + emit UpgradePicked + 清面板。
+        // 不需要 run_if（暂停时仍要跑：菜单本身只在暂停时显示）。
+        Script(
+            path: "upgrade_pick.rhai",
+        ),
+        // hover：消费 PickOver/PickOut 维护 Hovered.value + 每帧重绘卡片背景。
+        // 暂停期菜单仍要响应——不带 run_if。
+        Script(
+            path: "upgrade_hover.rhai",
+        ),
+    ],
+)

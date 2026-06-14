@@ -16,7 +16,7 @@ use bevy_ecs::component::{ComponentCloneBehavior, ComponentDescriptor, Component
 use bevy_ecs::entity::Entity;
 use bevy_ecs::ptr::OwningPtr;
 use bevy_ecs::world::World;
-use ron::Value;
+use serde_json::Value;
 use std::alloc::Layout;
 
 /// 一个已注册动态组件的元信息。

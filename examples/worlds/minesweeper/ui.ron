@@ -1,0 +1,32 @@
+// ui plugin：HUD 树 + 难度按钮 + 把所有 PickClick 翻译成领域事件。
+//
+// 与参考项目 bevy-lab/ui.rs 对齐——所有"原始输入 → 领域事件"路由集中在
+// 这里：tile 点击 → cell::RevealCell/FlagCell/ChordCell；难度按钮 →
+// difficulty::ChangeDifficulty。
+//
+// 拆成两个 system：
+// - input_router：emit 领域事件，必须在 cell 之前跑（before: ["cell"]）
+//   让 dynamic 事件同帧被 cell handler 消费
+// - hud：HUD 渲染，跑在 cell 之后（after: ["cell"]）让显示反映本帧最新状态
+//
+// 与 Bevy `add_systems(Update, (input_router.before(handle_cell), hud.after(handle_cell)))`
+// 的语义对齐。
+(
+    dependencies: ["cell", "difficulty", "timer", "anim"],
+    components: [
+        // 状态文本节点的 marker：kind="timer" / "mines" / "phase"。
+        (name: "HudKind", default: (kind: "")),
+        // 难度按钮 marker：which="Easy" / "Med" / "Hard"。
+        (name: "DifficultyButton", default: (which: "")),
+    ],
+    systems: [
+        Script(
+            path: "input_router.rhai",
+            before: ["cell"],
+        ),
+        Script(
+            path: "hud.rhai",
+            after: ["cell"],
+        ),
+    ],
+)

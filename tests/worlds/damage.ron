@@ -1,0 +1,17 @@
+(
+    components: [
+        (name: "Health", default: (value: 100.0)),
+    ],
+    events: [
+        // Dynamic event channel — fields default to 0.0 if omitted.
+        (name: "Damaged", default: (entity: 0, amount: 0.0)),
+    ],
+    entities: [
+        (components: {
+            "Health": (value: 50.0),
+        }),
+    ],
+    systems: [
+        Script(path: "damage.rhai"),
+    ],
+)

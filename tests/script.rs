@@ -9,18 +9,17 @@ fn world_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn number(value: &ron::Value) -> f64 {
-    match value {
-        ron::Value::Number(n) => n.into_f64(),
-        other => panic!("期望数值，得到 {other:?}"),
-    }
+fn number(value: &serde_json::Value) -> f64 {
+    value
+        .as_f64()
+        .unwrap_or_else(|| panic!("期望数值，得到 {value:?}"))
 }
 
-fn string(value: &ron::Value) -> String {
-    match value {
-        ron::Value::String(s) => s.clone(),
-        other => panic!("期望字符串，得到 {other:?}"),
-    }
+fn string(value: &serde_json::Value) -> String {
+    value
+        .as_str()
+        .unwrap_or_else(|| panic!("期望字符串，得到 {value:?}"))
+        .to_owned()
 }
 
 #[test]
@@ -68,8 +67,8 @@ fn entity_reference_via_inventory_ids() {
     let slots = vm
         .get(owners[0], "Inventory", "slots")
         .expect("应能读 Inventory.slots");
-    let ron::Value::Seq(ids) = slots else {
-        panic!("slots 应为序列，得到 {slots:?}");
+    let serde_json::Value::Array(ids) = slots else {
+        panic!("slots 应为数组，得到 {slots:?}");
     };
     assert_eq!(ids.len(), 2, "背包应存有两个物品 id");
 

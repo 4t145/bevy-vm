@@ -1,0 +1,107 @@
+(
+    components: [
+        // 自转脚本用：每 tick 绕 Y 轴增加的角度（度）。
+        (name: "Spin", default: (speed: 0.0)),
+    ],
+    entities: [
+        // 9 个实心图元一字排开，各自不同颜色，缓慢自转便于看清形状。
+        (components: {
+            "Position": (x: -8.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Cube": (size: [1.4, 1.4, 1.4]) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.9, green: 0.3, blue: 0.3, alpha: 1.0) },
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: -6.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Sphere": (radius: 0.8) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.9, green: 0.6, blue: 0.2, alpha: 1.0) },
+                    metallic: 0.8,
+                    roughness: 0.3,
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: -4.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Cylinder": (radius: 0.7, height: 1.6) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.4, green: 0.8, blue: 0.4, alpha: 1.0) },
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: -2.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Capsule": (radius: 0.5, length: 1.2) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.3, green: 0.7, blue: 0.9, alpha: 1.0) },
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: 0.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Cone": (radius: 0.8, height: 1.6) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.8, green: 0.5, blue: 0.9, alpha: 1.0) },
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: 2.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "ConicalFrustum": (radius_top: 0.3, radius_bottom: 0.8, height: 1.6) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.9, green: 0.8, blue: 0.3, alpha: 1.0) },
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: 4.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Torus": (inner_radius: 0.3, outer_radius: 0.8) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.5, green: 0.5, blue: 0.95, alpha: 1.0) },
+                    metallic: 0.6,
+                    roughness: 0.4,
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        (components: {
+            "Position": (x: 6.0, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Tetrahedron": (size: 1.6) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.95, green: 0.4, blue: 0.6, alpha: 1.0) },
+                ) },
+            ),
+            "Spin": (speed: 0.8),
+        }),
+        // 平面作地面，置于下方，不自转。
+        (components: {
+            "Position": (x: 0.0, y: -1.5, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Plane": (half_extents: [12.0, 4.0]) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.25, green: 0.25, blue: 0.28, alpha: 1.0) },
+                    roughness: 0.9,
+                ) },
+            ),
+        }),
+    ],
+    systems: [
+        Script(path: "spin.rhai"),
+    ],
+)

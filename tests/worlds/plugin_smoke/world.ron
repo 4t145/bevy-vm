@@ -1,0 +1,11 @@
+// 最小 plugin demo：根 world 引用一个 tiles plugin 和一个 hud plugin。
+// hud 依赖 tiles 提供的 Tile 组件 → 跨 plugin 引用走全限定名 `tiles::Tile`。
+(
+    plugins: ["tiles", "hud"],
+    entities: [
+        // 根 world 自己 spawn 一个 tile 实体——演示根可以直接引用 plugin 组件。
+        (components: {
+            "tiles::Tile": (kind: "root_seed", value: 42),
+        }),
+    ],
+)

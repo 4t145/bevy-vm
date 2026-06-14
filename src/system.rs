@@ -9,14 +9,19 @@ pub mod script;
 pub use script::ScriptSystem;
 
 use crate::error::VmError;
+use crate::event::EventStore;
 use bevy_ecs::world::World;
 
 /// 一个可对世界施加每-tick 变更的行为单元。
 pub trait System {
-    /// 在世界上执行一次该 system。
+    /// 在给定 World + 事件存储上执行一次该 system。
+    ///
+    /// `events` 提供对当前 tick 的事件双缓冲的可变访问：实现可读取 `front`、
+    /// 写入 `back`。tick 末由 [`crate::VmWorld`] 统一 swap，单个 system 不要
+    /// 自行 swap。
     ///
     /// # Errors
     ///
     /// 当行为执行失败（如脚本运行期抛错）时返回对应的 [`VmError`]。
-    fn run(&self, world: &mut World) -> Result<(), VmError>;
+    fn run(&self, world: &mut World, events: &mut EventStore) -> Result<(), VmError>;
 }

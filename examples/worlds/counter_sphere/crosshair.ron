@@ -1,0 +1,15 @@
+// crosshair plugin：屏幕中心一个十字准星——两条 1px 细条交叉。
+//
+// 第一帧 spawn UI 树。常驻——无需 refresh。
+(
+    components: [
+        (name: "Crosshair", default: ()),
+        (name: "CrosshairSpawnState", default: (spawned: 0)),
+    ],
+    entities: [
+        (components: { "CrosshairSpawnState": (spawned: 0) }),
+    ],
+    systems: [
+        Script(path: "crosshair.rhai"),
+    ],
+)

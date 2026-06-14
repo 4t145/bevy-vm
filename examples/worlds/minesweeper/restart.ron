@@ -1,0 +1,10 @@
+// restart plugin：监听键盘 R 键 → emit cell::RestartGame。
+//
+// 与参考项目 main.rs 的 `restart_on_key` 对齐——单纯的输入路由。
+(
+    dependencies: ["cell"],
+    systems: [
+        // 排在 cell 前——同帧 emit 的 RestartGame 让 cell 当 tick 即处理。
+        Script(path: "restart.rhai", before: ["cell"]),
+    ],
+)

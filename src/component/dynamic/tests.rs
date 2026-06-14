@@ -2,43 +2,43 @@
 
 use super::{get, get_mut, insert, register};
 use bevy_ecs::world::World;
-use ron::Value;
+use serde_json::Value;
 
 fn value(text: &str) -> Value {
-    ron::from_str(text).expect("测试值应为合法 RON")
+    serde_json::from_str(text).expect("test value should be valid JSON")
 }
 
 #[test]
 fn register_insert_and_read_back() {
     let mut world = World::new();
-    let health = register(&mut world, "Health", value("(value: 100.0)"));
+    let health = register(&mut world, "Health", value(r#"{"value": 100.0}"#));
     let entity = world.spawn_empty().id();
-    insert(&mut world, entity, health.id, value("(value: 30.0)"));
+    insert(&mut world, entity, health.id, value(r#"{"value": 30.0}"#));
 
     let stored = get(&world, entity, health.id).expect("应能读回动态组件值");
-    assert_eq!(stored, &value("(value: 30.0)"));
+    assert_eq!(stored, &value(r#"{"value": 30.0}"#));
 }
 
 #[test]
 fn get_mut_allows_in_place_edit() {
     let mut world = World::new();
-    let health = register(&mut world, "Health", value("(value: 0.0)"));
+    let health = register(&mut world, "Health", value(r#"{"value": 0.0}"#));
     let entity = world.spawn_empty().id();
-    insert(&mut world, entity, health.id, value("(value: 10.0)"));
+    insert(&mut world, entity, health.id, value(r#"{"value": 10.0}"#));
 
     let stored = get_mut(&mut world, entity, health.id).expect("应能取到可变引用");
-    *stored = value("(value: 7.0)");
+    *stored = value(r#"{"value": 7.0}"#);
 
     assert_eq!(
         get(&world, entity, health.id).expect("应能读回"),
-        &value("(value: 7.0)")
+        &value(r#"{"value": 7.0}"#)
     );
 }
 
 #[test]
 fn missing_component_returns_none() {
     let mut world = World::new();
-    let health = register(&mut world, "Health", value("()"));
+    let health = register(&mut world, "Health", value("{}"));
     let entity = world.spawn_empty().id();
 
     assert!(
@@ -50,9 +50,14 @@ fn missing_component_returns_none() {
 #[test]
 fn dynamic_component_is_queryable_by_id() {
     let mut world = World::new();
-    let health = register(&mut world, "Health", value("()"));
+    let health = register(&mut world, "Health", value("{}"));
     let with_health = world.spawn_empty().id();
-    insert(&mut world, with_health, health.id, value("(value: 1.0)"));
+    insert(
+        &mut world,
+        with_health,
+        health.id,
+        value(r#"{"value": 1.0}"#),
+    );
     world.spawn_empty();
 
     let mut query = bevy_ecs::prelude::QueryBuilder::<bevy_ecs::entity::Entity>::new(&mut world)
@@ -71,13 +76,13 @@ fn dynamic_component_is_queryable_by_id() {
 fn despawn_drops_value_without_leak() {
     // 用一个嵌套堆分配值，验证 despawn 触发 Value 的析构路径。
     let mut world = World::new();
-    let bag = register(&mut world, "Bag", value("()"));
+    let bag = register(&mut world, "Bag", value("{}"));
     let entity = world.spawn_empty().id();
     insert(
         &mut world,
         entity,
         bag.id,
-        value(r#"(items: ["a", "b", "c"])"#),
+        value(r#"{"items": ["a", "b", "c"]}"#),
     );
 
     world.despawn(entity);

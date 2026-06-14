@@ -1,0 +1,45 @@
+// enemy plugin：敌人组件 + spawn 调度 + AI（朝玩家移动）。
+//
+// EnemySpawner 是单例 entity，记录"下次 spawn 时刻"和当前数量限。
+// world.ron 不 spawn 它——这里 entities 段创建。
+(
+    dependencies: ["player"],
+    components: [
+        (
+            name: "Enemy",
+            default: (
+                kind: "small",     // small / medium / large
+                hp: 10,
+                damage: 5,
+                speed: 2.0,
+                xp_reward: 1,
+            ),
+        ),
+        (
+            name: "EnemySpawner",
+            default: (
+                next_spawn_time: 0.0,
+                spawn_interval: 1.0,   // 起始 1s 一只——后面随存活时间递减
+                max_alive: 60,
+            ),
+        ),
+    ],
+    entities: [
+        (components: { "EnemySpawner": (next_spawn_time: 0.5) }),
+    ],
+    systems: [
+        // spawn 调度——暂停 + 死亡时不 spawn。
+        Script(
+            path: "enemy_spawn.rhai",
+            run_if: ["!is_paused()"],
+        ),
+        // AI 移动——朝玩家走。
+        Script(
+            path: "enemy_move.rhai",
+            run_if: ["!is_paused()"],
+            // 在 player 之后跑——读到玩家本帧的最新位置（玩家先移动，
+            // 敌人后追）。
+            after: ["player"],
+        ),
+    ],
+)

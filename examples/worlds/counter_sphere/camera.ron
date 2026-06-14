@@ -1,0 +1,7 @@
+// camera plugin：第一人称相机——位置贴在玩家头部，朝向沿玩家 yaw。
+(
+    dependencies: ["player"],
+    systems: [
+        Script(path: "camera.rhai", after: ["player"]),
+    ],
+)

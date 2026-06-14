@@ -1,0 +1,30 @@
+// level plugin：累计 XP + 阈值检查 + emit LevelUp。
+//
+// PlayerLevel 是单例 entity——本 plugin spawn 一次。
+// 阈值表：lv1→2 需 10 xp；lv2→3 需 25 xp；之后每级 *1.6。
+(
+    dependencies: ["xp"],
+    components: [
+        (
+            name: "PlayerLevel",
+            default: (
+                level: 1,
+                current_xp: 0,
+                next_threshold: 10,
+            ),
+        ),
+    ],
+    events: [
+        (name: "LevelUp", default: (level: 1)),
+    ],
+    entities: [
+        (components: { "PlayerLevel": (level: 1) }),
+    ],
+    systems: [
+        Script(
+            path: "level.rhai",
+            run_if: ["!is_paused()"],
+            after: ["xp"],
+        ),
+    ],
+)

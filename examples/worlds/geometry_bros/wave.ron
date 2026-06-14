@@ -1,0 +1,53 @@
+// wave plugin：波次系统——每 20 秒一波。
+//
+// 每波结束 → emit WaveCompleted；同帧清场（敌人 / 弹幕 / 经验球折算回 XP）+
+// pause（由 pause plugin 监听）+ spawn 加强菜单（由 upgrade plugin 监听）。
+// 玩家选完菜单 emit pause::UpgradePicked → resume（pause plugin）+ 进入下一波
+// （wave_advance）。
+//
+// WaveState 是单例 entity，挂在世界初始化时由 entities 段创建。
+//
+// 难度梯度：每过一波 spawn_interval 略缩 / max_alive 略涨——具体让 enemy_spawn
+// 自己读 WaveState 里的 number。
+(
+    dependencies: ["combat", "xp"],
+    components: [
+        (
+            name: "WaveState",
+            default: (
+                number: 1,                  // 当前是第几波
+                duration: 20.0,             // 本波总时长（秒）
+                remaining: 20.0,            // 剩余时间，归零即 emit WaveCompleted
+                in_intermission: 0,         // 1 = 菜单中，倒计时不走、不再 emit
+            ),
+        ),
+    ],
+    events: [
+        (name: "WaveCompleted", default: (number: 1)),
+        (name: "WaveStarted", default: (number: 1)),
+    ],
+    entities: [
+        (components: { "WaveState": (number: 1, remaining: 20.0) }),
+    ],
+    systems: [
+        // 倒计时——run_if !is_paused() 让 pause 期间不走表。
+        // 必须在 combat 之后跑：避免它和 enemy_spawn 同帧争抢 advance。
+        Script(
+            path: "wave_tick.rhai",
+            run_if: ["!is_paused()"],
+            after: ["combat"],
+        ),
+        // 监听 pause::UpgradePicked → 进入下一波。pause::UpgradePicked 由
+        // upgrade::upgrade_pick emit；必须 after 具体 system（不是整个
+        // upgrade set，否则与 upgrade_show after wave_tick 形成环）。
+        Script(
+            path: "wave_advance.rhai",
+            after: ["upgrade::upgrade_pick"],
+        ),
+        // WaveCompleted 同帧清场——必须看到 wave_tick 本帧 emit 的事件。
+        Script(
+            path: "wave_clear.rhai",
+            after: ["wave::wave_tick"],
+        ),
+    ],
+)

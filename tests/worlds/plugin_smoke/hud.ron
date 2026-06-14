@@ -1,0 +1,11 @@
+// hud plugin：声明一个自家的 HudKind 组件 + 一个用 tiles::Tile 的脚本。
+// 通过 dependencies 显式声明对 tiles 的依赖，让加载器拓扑保证 tiles 在前。
+(
+    dependencies: ["tiles"],
+    components: [
+        (name: "HudKind", default: (kind: "")),
+    ],
+    systems: [
+        Script(path: "hud.rhai"),
+    ],
+)

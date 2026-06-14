@@ -1,0 +1,23 @@
+// cursor plugin：管理鼠标 grab 状态。
+//
+// 启动 emit CursorGrab → viewer 锁定鼠标进入 FPS 视角。
+// Esc 按下 → emit CursorRelease 释放，便于玩家点顶栏切换 world。
+//
+// CursorGrab / CursorRelease 是 bevy_vm::plugin::cursor 提供的 typed
+// VM→host 事件——viewer 注册了 CursorPlugin 后即可使用，本 plugin 不需要
+// 额外声明 events:。
+(
+    components: [
+        // grabbed：0 = 待 emit grab，1 = 已 grabbed。Esc 释放后重置为 0，
+        // 下一帧再次 emit grab 让玩家直接进入 FPS。本 demo 想保持 Esc 释放
+        // **持久**——所以 Esc 路径不重置，玩家想再 grab 必须 R 重开或自己点。
+        // （为了简单，目前 Esc 后保留 0，启动逻辑会立刻再 grab——见 cursor.rhai。）
+        (name: "CursorState", default: (grabbed: 0)),
+    ],
+    entities: [
+        (components: { "CursorState": (grabbed: 0) }),
+    ],
+    systems: [
+        Script(path: "cursor.rhai"),
+    ],
+)

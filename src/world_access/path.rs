@@ -1,41 +1,95 @@
-//! 点号路径导航：在 [`ron::Value`] 树上按 `a.b.0` 定位、读、增/改、删。
+//! Dotted-path navigation: locate, read, insert/modify, and delete fields in a
+//! [`serde_json::Value`] tree using `a.b.0`-style paths.
 //!
-//! 路径是点号分隔的段序列；每段对映射是字符串键，对序列是十进制下标。空路径
-//! 指向根值本身。`path_set` 在缺失的中间映射键上按需创建空映射后继续下探。
+//! A path is a sequence of dot-separated segments. For objects each segment is
+//! a string key; for arrays it is a decimal index. The empty path refers to
+//! the root value itself. [`ValuePathExt::path_set`] auto-creates missing
+//! intermediate object keys with empty-object placeholders before descending
+//! further.
 //!
-//! 能力以扩展 trait [`ValuePathExt`] 暴露，仅为 [`ron::Value`] 实现。
+//! Capabilities are exposed via the [`ValuePathExt`] extension trait,
+//! currently implemented only for [`serde_json::Value`].
 
 #[cfg(test)]
 mod tests;
 
-use ron::Value;
+use serde_json::Value;
+use thiserror::Error;
 
-/// 为 [`ron::Value`] 提供点号路径的读、增/改、删能力。
+/// Errors raised by [`ValuePathExt`] operations.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum PathError {
+    /// Object does not contain the given key.
+    #[error("key `{key}` not found in object")]
+    KeyNotFound {
+        /// Missing key.
+        key: String,
+    },
+    /// Array index is past the end of the array.
+    #[error("array index {index} out of bounds (length {len})")]
+    IndexOutOfBounds {
+        /// Requested index.
+        index: usize,
+        /// Array length at the time of access.
+        len: usize,
+    },
+    /// Tried to descend into a value that is neither an object nor an array.
+    #[error("cannot descend into non-container value at segment `{segment}`")]
+    NotContainer {
+        /// Path segment that triggered the failure.
+        segment: String,
+    },
+    /// Tried to assign past the end of an array (only `array.len` is allowed
+    /// as an append position).
+    #[error("cannot assign at array index {index}: length is {len}")]
+    AssignOutOfBounds {
+        /// Requested index.
+        index: usize,
+        /// Array length at the time of access.
+        len: usize,
+    },
+    /// An array index path segment is not a non-negative integer.
+    #[error("array index must be a non-negative integer, got `{segment}`")]
+    NonIntegerIndex {
+        /// Offending path segment.
+        segment: String,
+    },
+    /// Attempted to remove the root value, which has no parent container.
+    #[error("cannot remove the root value")]
+    RemoveRoot,
+}
+
+/// Extension trait granting [`serde_json::Value`] dotted-path read/write/delete.
 pub trait ValuePathExt {
-    /// 读取路径处值的引用。
+    /// Reads the value at `path` by reference.
     ///
     /// # Errors
     ///
-    /// 路径中途的值不是可下探的容器，或键/下标不存在时返回描述性错误。
-    fn path_get(&self, path: &str) -> Result<&Value, String>;
+    /// Returns [`PathError`] if any intermediate value is not a container, or
+    /// if a key/index is missing.
+    fn path_get(&self, path: &str) -> Result<&Value, PathError>;
 
-    /// 在路径处写入值；按需创建缺失的中间映射键。
+    /// Writes `value` at `path`, auto-creating any missing intermediate
+    /// object keys.
     ///
     /// # Errors
     ///
-    /// 路径中途的值不是映射，或试图按下标写入越界/非序列时返回描述性错误。
-    fn path_set(&mut self, path: &str, value: Value) -> Result<(), String>;
+    /// Returns [`PathError`] if an intermediate value is not a container, or
+    /// the terminal segment is invalid for its parent (e.g. out-of-bounds
+    /// array index).
+    fn path_set(&mut self, path: &str, value: Value) -> Result<(), PathError>;
 
-    /// 删除路径处的值。
+    /// Removes the value at `path`.
     ///
     /// # Errors
     ///
-    /// 父路径不存在或不是容器、或试图删除根值时返回描述性错误。
-    fn path_remove(&mut self, path: &str) -> Result<(), String>;
+    /// Returns [`PathError::RemoveRoot`] if `path` is empty, or other variants
+    /// when the parent container is missing or the key/index does not exist.
+    fn path_remove(&mut self, path: &str) -> Result<(), PathError>;
 }
 
 impl ValuePathExt for Value {
-    fn path_get(&self, path: &str) -> Result<&Value, String> {
+    fn path_get(&self, path: &str) -> Result<&Value, PathError> {
         let mut current = self;
         for segment in segments(path) {
             current = step(current, segment)?;
@@ -43,7 +97,7 @@ impl ValuePathExt for Value {
         Ok(current)
     }
 
-    fn path_set(&mut self, path: &str, value: Value) -> Result<(), String> {
+    fn path_set(&mut self, path: &str, value: Value) -> Result<(), PathError> {
         let parts: Vec<&str> = segments(path).collect();
         let Some((last, parents)) = parts.split_last() else {
             *self = value;
@@ -56,10 +110,10 @@ impl ValuePathExt for Value {
         assign(current, last, value)
     }
 
-    fn path_remove(&mut self, path: &str) -> Result<(), String> {
+    fn path_remove(&mut self, path: &str) -> Result<(), PathError> {
         let parts: Vec<&str> = segments(path).collect();
         let Some((last, parents)) = parts.split_last() else {
-            return Err("不能删除根值".to_owned());
+            return Err(PathError::RemoveRoot);
         };
         let mut current = self;
         for segment in parents {
@@ -69,112 +123,121 @@ impl ValuePathExt for Value {
     }
 }
 
-/// 把路径拆成段；空路径产出空序列。
+/// Splits `path` into segments; an empty path yields no segments.
 fn segments(path: &str) -> impl Iterator<Item = &str> {
     path.split('.').filter(|segment| !segment.is_empty())
 }
 
-/// 只读下探一段。
-fn step<'v>(value: &'v Value, segment: &str) -> Result<&'v Value, String> {
+/// Read-only descend by one segment.
+fn step<'v>(value: &'v Value, segment: &str) -> Result<&'v Value, PathError> {
     match value {
-        Value::Map(map) => map
-            .iter()
-            .find(|(key, _)| key_matches(key, segment))
-            .map(|(_, v)| v)
-            .ok_or_else(|| format!("映射中不存在键 `{segment}`")),
-        Value::Seq(seq) => {
+        Value::Object(map) => map.get(segment).ok_or_else(|| PathError::KeyNotFound {
+            key: segment.to_owned(),
+        }),
+        Value::Array(seq) => {
             let index = parse_index(segment)?;
-            seq.get(index)
-                .ok_or_else(|| format!("序列下标 {index} 越界"))
+            seq.get(index).ok_or(PathError::IndexOutOfBounds {
+                index,
+                len: seq.len(),
+            })
         }
-        _ => Err(format!("无法在非容器值上下探段 `{segment}`")),
+        _ => Err(PathError::NotContainer {
+            segment: segment.to_owned(),
+        }),
     }
 }
 
-/// 可变下探一段（要求已存在）。
-fn step_mut<'v>(value: &'v mut Value, segment: &str) -> Result<&'v mut Value, String> {
+/// Mutable descend by one segment (segment must already exist).
+fn step_mut<'v>(value: &'v mut Value, segment: &str) -> Result<&'v mut Value, PathError> {
     match value {
-        Value::Map(map) => map
-            .iter_mut()
-            .find(|(key, _)| key_matches(key, segment))
-            .map(|(_, v)| v)
-            .ok_or_else(|| format!("映射中不存在键 `{segment}`")),
-        Value::Seq(seq) => {
+        Value::Object(map) => map.get_mut(segment).ok_or_else(|| PathError::KeyNotFound {
+            key: segment.to_owned(),
+        }),
+        Value::Array(seq) => {
             let index = parse_index(segment)?;
             let len = seq.len();
             seq.get_mut(index)
-                .ok_or_else(|| format!("序列下标 {index} 越界（长度 {len}）"))
+                .ok_or(PathError::IndexOutOfBounds { index, len })
         }
-        _ => Err(format!("无法在非容器值上下探段 `{segment}`")),
+        _ => Err(PathError::NotContainer {
+            segment: segment.to_owned(),
+        }),
     }
 }
 
-/// 可变下探一段；段在映射中缺失时创建空映射占位。
-fn step_mut_or_create<'v>(value: &'v mut Value, segment: &str) -> Result<&'v mut Value, String> {
-    if let Value::Seq(_) = value {
+/// Mutable descend by one segment; create an empty object when the key is
+/// missing from an object (arrays still require the index to exist).
+fn step_mut_or_create<'v>(value: &'v mut Value, segment: &str) -> Result<&'v mut Value, PathError> {
+    if let Value::Array(_) = value {
         return step_mut(value, segment);
     }
-    let Value::Map(map) = value else {
-        return Err(format!("无法在非容器值上下探段 `{segment}`"));
+    let Value::Object(map) = value else {
+        return Err(PathError::NotContainer {
+            segment: segment.to_owned(),
+        });
     };
-    let key = Value::String(segment.to_owned());
-    if !map.iter().any(|(k, _)| key_matches(k, segment)) {
-        map.insert(key.clone(), Value::Map(ron::Map::new()));
-    }
-    Ok(&mut map[&key])
+    Ok(map
+        .entry(segment.to_owned())
+        .or_insert_with(|| Value::Object(serde_json::Map::new())))
 }
 
-/// 在容器的末段位置写入值。
-fn assign(container: &mut Value, segment: &str, value: Value) -> Result<(), String> {
+/// Assign `value` at the terminal segment within `container`.
+fn assign(container: &mut Value, segment: &str, value: Value) -> Result<(), PathError> {
     match container {
-        Value::Map(map) => {
-            map.insert(Value::String(segment.to_owned()), value);
+        Value::Object(map) => {
+            map.insert(segment.to_owned(), value);
             Ok(())
         }
-        Value::Seq(seq) => {
+        Value::Array(seq) => {
             let index = parse_index(segment)?;
             if index == seq.len() {
                 seq.push(value);
             } else if index < seq.len() {
                 seq[index] = value;
             } else {
-                return Err(format!("序列下标 {index} 越界（长度 {}）", seq.len()));
+                return Err(PathError::AssignOutOfBounds {
+                    index,
+                    len: seq.len(),
+                });
             }
             Ok(())
         }
-        _ => Err(format!("无法在非容器值上写入段 `{segment}`")),
+        _ => Err(PathError::NotContainer {
+            segment: segment.to_owned(),
+        }),
     }
 }
 
-/// 删除容器末段位置的值。
-fn delete(container: &mut Value, segment: &str) -> Result<(), String> {
+/// Delete the terminal segment within `container`.
+fn delete(container: &mut Value, segment: &str) -> Result<(), PathError> {
     match container {
-        Value::Map(map) => {
-            let key = Value::String(segment.to_owned());
-            map.remove(&key)
+        Value::Object(map) => {
+            map.remove(segment)
                 .map(|_| ())
-                .ok_or_else(|| format!("映射中不存在键 `{segment}`"))
+                .ok_or_else(|| PathError::KeyNotFound {
+                    key: segment.to_owned(),
+                })
         }
-        Value::Seq(seq) => {
+        Value::Array(seq) => {
             let index = parse_index(segment)?;
-            if index >= seq.len() {
-                return Err(format!("序列下标 {index} 越界（长度 {}）", seq.len()));
+            let len = seq.len();
+            if index >= len {
+                return Err(PathError::IndexOutOfBounds { index, len });
             }
             seq.remove(index);
             Ok(())
         }
-        _ => Err(format!("无法在非容器值上删除段 `{segment}`")),
+        _ => Err(PathError::NotContainer {
+            segment: segment.to_owned(),
+        }),
     }
 }
 
-/// 映射键是否等于路径段（键须为字符串）。
-fn key_matches(key: &Value, segment: &str) -> bool {
-    matches!(key, Value::String(s) if s == segment)
-}
-
-/// 把路径段解析为序列下标。
-fn parse_index(segment: &str) -> Result<usize, String> {
+/// Parse a path segment as an array index.
+fn parse_index(segment: &str) -> Result<usize, PathError> {
     segment
         .parse::<usize>()
-        .map_err(|_| format!("序列下标必须是非负整数，得到 `{segment}`"))
+        .map_err(|_| PathError::NonIntegerIndex {
+            segment: segment.to_owned(),
+        })
 }

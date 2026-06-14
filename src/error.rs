@@ -1,62 +1,140 @@
-//! 世界构建与执行过程中的错误类型。
+//! Error types raised when constructing or running a [`crate::VmWorld`].
 
+use crate::component::RegistryError;
+use crate::component::typed::TypedComponentError;
+use crate::event::EventError;
+use crate::world_access::WorldAccessError;
 use thiserror::Error;
 
-/// 构建或运行一个 [`crate::VmWorld`] 时可能发生的失败。
+/// Failures that can occur while building or running a [`crate::VmWorld`].
 ///
-/// 每个变体携带足够的上下文，使得单个世界的失败可被上层管理者捕获并丢弃，
-/// 而不影响其它独立世界。
+/// Each variant carries enough context to let the supervisor of multiple
+/// independent worlds catch and discard a single failing world without
+/// affecting the others.
 #[derive(Debug, Error)]
 pub enum VmError {
-    /// 读取配置文件或脚本文件失败。
-    #[error("读取文件 `{path}` 失败: {reason}")]
+    /// Failed to read a config or script file.
+    #[error("failed to read file `{path}`: {reason}")]
     Io {
-        /// 尝试读取的文件路径。
+        /// File path that was attempted.
         path: String,
-        /// 底层 IO 错误描述。
+        /// Underlying I/O error description.
         reason: String,
     },
 
-    /// 配置文本无法被解析为预期的世界描述。
-    #[error("解析配置失败: {0}")]
+    /// Failed to parse the config text into a world description.
+    #[error("failed to parse config: {0}")]
     Parse(String),
 
-    /// 配置引用了一个未在组件注册表中登记的组件名。
-    #[error("未知组件类型: {0}")]
+    /// Config referenced a component name that is not registered.
+    #[error("unknown component: {0}")]
     UnknownComponent(String),
 
-    /// 通过反射路径写入组件属性时失败。
-    #[error("设置属性 `{path}` 失败: {reason}")]
-    SetProperty {
-        /// 反射路径，例如 `translation.x`。
-        path: String,
-        /// 底层反射错误的描述。
-        reason: String,
+    /// Failed to register a dynamic component declared by the config.
+    #[error("failed to register component: {0}")]
+    Registry(#[from] RegistryError),
+
+    /// Failed to populate a typed component during config-driven entity init.
+    #[error("failed to initialize component `{component}`: {source}")]
+    InitTypedComponent {
+        /// Component name as written in the config.
+        component: String,
+        /// Underlying typed-component bridge error.
+        #[source]
+        source: TypedComponentError,
     },
 
-    /// 给定的字符串不是合法的 JSON Pointer（RFC 6901）。
-    #[error("非法属性路径 `{path}`: {reason}")]
-    InvalidPath {
-        /// 原始路径字符串。
-        path: String,
-        /// 解析失败原因。
-        reason: String,
+    /// Failed to auto-insert a required component declared by `requires(...)`.
+    #[error("failed to apply requires for component `{component}`: {source}")]
+    InitTypedRequired {
+        /// Component whose `requires` triggered the auto-insert.
+        component: String,
+        /// Underlying world-access error.
+        #[source]
+        source: WorldAccessError,
     },
 
-    /// 按路径解析或变更动态属性时失败。
-    #[error("属性路径 `{path}` 操作失败: {reason}")]
-    PropertyPath {
-        /// JSON Pointer 路径。
-        path: String,
-        /// 底层错误描述。
-        reason: String,
+    /// Failed to populate a dynamic component during config-driven entity init.
+    #[error("failed to initialize component `{component}` field `{field}`: {source}")]
+    InitDynamicField {
+        /// Component name.
+        component: String,
+        /// Field path within the component.
+        field: String,
+        /// Underlying world-access error.
+        #[source]
+        source: WorldAccessError,
     },
 
-    /// 脚本无法编译为合法的 Rhai AST。
-    #[error("脚本编译失败: {0}")]
+    /// Failed to insert a dynamic component's default instance.
+    #[error("failed to insert default for component `{component}`: {source}")]
+    InsertDynamicDefault {
+        /// Component name.
+        component: String,
+        /// Underlying world-access error.
+        #[source]
+        source: WorldAccessError,
+    },
+
+    /// Failed to register a typed or dynamic event channel.
+    #[error("failed to register event: {0}")]
+    Event(#[from] EventError),
+
+    /// Script source could not be compiled to a valid Rhai AST.
+    #[error("script compilation failed: {0}")]
     ScriptCompile(String),
 
-    /// 脚本运行期抛错（含超出操作数上限、宿主函数报错等）。
-    #[error("脚本运行失败: {0}")]
+    /// Script raised an error at runtime (operation budget exceeded, host
+    /// function failure, etc.).
+    #[error("script runtime error: {0}")]
     ScriptRuntime(String),
+
+    /// Plugin loader detected a cycle in dependency graph.
+    #[error("plugin dependency cycle: {chain}")]
+    PluginCycle {
+        /// `a -> b -> c -> a`-style chain that closes the cycle.
+        chain: String,
+    },
+
+    /// Plugin declared a dependency on a name that no plugin in the load
+    /// graph provides.
+    #[error("plugin `{plugin}` depends on `{missing}` but no such plugin was loaded")]
+    PluginMissingDependency {
+        /// Plugin declaring the dependency.
+        plugin: String,
+        /// Dependency name that could not be resolved.
+        missing: String,
+    },
+
+    /// Two plugins declare a component / event of the same fully-qualified
+    /// name. Always a programmer error — namespacing should make this
+    /// impossible in normal use; this variant catches collisions on the
+    /// global (host) namespace.
+    #[error("plugin namespace collision: `{name}` declared by both `{first}` and `{second}`")]
+    PluginNameCollision {
+        /// Fully qualified `<plugin>::<short>` (or `<short>` for global) name.
+        name: String,
+        /// First plugin that registered the name.
+        first: String,
+        /// Second plugin that tried to register the same name.
+        second: String,
+    },
+
+    /// System `before` / `after` graph contains a cycle—无法 topo 排序。
+    #[error("system ordering cycle: {chain}")]
+    SystemOrderCycle {
+        /// `a -> b -> ... -> a` 形式的闭环描述。
+        chain: String,
+    },
+
+    /// System `before` / `after` 引用了一个不存在的 set / system 名。
+    #[error("system `{system}` references unknown set `{missing}` in {kind}")]
+    UnknownSystemRef {
+        /// 当前 system 的 plugin::stem 名。
+        system: String,
+        /// 没有匹配 set 也没有匹配 system 的引用名。
+        missing: String,
+        /// `"before"` 或 `"after"`——便于诊断。
+        kind: &'static str,
+    },
 }

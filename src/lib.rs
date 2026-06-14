@@ -10,11 +10,16 @@
 pub mod component;
 pub mod config;
 pub mod error;
-#[cfg(feature = "render")]
+pub mod event;
+pub mod plugin;
+pub mod plugin_loader;
+pub mod random;
+#[cfg(feature = "bevy-bridge")]
 pub mod render;
+pub mod resource;
 pub mod system;
 pub mod vm;
 pub mod world_access;
 
 pub use error::VmError;
-pub use vm::{EntitySnapshot, VmWorld, WorldSnapshot};
+pub use vm::{EntitySnapshot, VmWorld, VmWorldBuilder, WorldSnapshot};

@@ -3,7 +3,7 @@
 for e in query("Health") {
     let hp = get(e, "Health", "value");
     if hp > 5.0 {
-        add(e, "Health", "value", -2.0);
+        set(e, "Health", "value", hp - 2.0);
         set(e, "Health", "state", "fighting");
     } else {
         set(e, "Health", "state", "fleeing");

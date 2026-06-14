@@ -1,0 +1,27 @@
+// cell plugin：单格状态 + 4 类领域事件 handler。
+//
+// 与参考项目 bevy-lab/cell.rs 对齐——所有"棋盘核心规则"集中在这：
+// - reveal_cascade 翻开 + flood-fill
+// - flag toggle
+// - chord 自动展开
+// - restart 清空棋盘 + reset
+//
+// 与外部交互通过事件：上游 emit Reveal/Flag/Chord/RestartGame，本 plugin
+// 在下一 tick 消费。布雷（populate_mines）也在这里——首次 reveal 触发。
+(
+    dependencies: ["board"],
+    components: [
+        (name: "Tile", default: (mine: 0, adj: 0, revealed: 0, flag: 0, x: 0, y: 0)),
+    ],
+    events: [
+        // entity 字段是 tile 的 VM entity id（脚本端用 to_bits 整数）。
+        (name: "RevealCell", default: (entity: 0)),
+        (name: "FlagCell", default: (entity: 0)),
+        (name: "ChordCell", default: (entity: 0)),
+        // RestartGame 无字段——只是个信号。emit 时给空 map 即可。
+        (name: "RestartGame", default: ()),
+    ],
+    systems: [
+        Script(path: "cell.rhai"),
+    ],
+)

@@ -1,0 +1,28 @@
+// board plugin：棋盘元数据 + 初始 layout。
+//
+// 状态字段：
+// - layout_built: tile 实体是否已 spawn
+// - mines_placed: 是否已布雷（首次 reveal 触发）
+// - state: 0=playing 1=won 2=lost
+// - start_time: 首次点击时刻（time() 的快照），timer plugin 用来算 elapsed
+//
+// 这里只声明组件——init_layout 在 board.rhai 里跑。
+(
+    components: [
+        (
+            name: "Board",
+            default: (
+                width: 8,
+                height: 8,
+                mine_count: 10,
+                layout_built: 0,
+                mines_placed: 0,
+                state: 0,
+                start_time: 0.0,
+            ),
+        ),
+    ],
+    systems: [
+        Script(path: "board.rhai"),
+    ],
+)

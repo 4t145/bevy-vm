@@ -1,0 +1,12 @@
+(
+    components: [
+        // Counter incremented each tick by the number of MouseButton events received.
+        (name: "Counter", default: (clicks: 0)),
+    ],
+    entities: [
+        (components: { "Counter": (clicks: 0) }),
+    ],
+    systems: [
+        Script(path: "input_counter.rhai"),
+    ],
+)

@@ -1,0 +1,11 @@
+// combat plugin：子弹 ↔ 敌人 碰撞。命中 → 敌人 hp -= dmg；hp<=0 → despawn
+// 敌人 + emit EnemyDied + 子弹 despawn。
+(
+    dependencies: ["bullet", "enemy", "player"],
+    events: [
+        (name: "EnemyDied", default: ()),
+    ],
+    systems: [
+        Script(path: "combat.rhai", after: ["bullet", "enemy"]),
+    ],
+)

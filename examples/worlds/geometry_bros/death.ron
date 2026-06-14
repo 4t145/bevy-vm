@@ -1,0 +1,29 @@
+// death plugin：监听 PlayerDied 弹结算 + R 键 emit RestartGame；其它 plugin
+// 监听 RestartGame 自行重置。
+//
+// 暂停由 pause plugin 触发（监听 PlayerDied）；本 plugin 只负责 UI + 重启。
+(
+    dependencies: ["combat", "player", "level"],
+    components: [
+        (name: "DeathScreen", default: ()),
+    ],
+    events: [
+        (name: "RestartGame", default: ()),
+    ],
+    systems: [
+        // 监听 PlayerDied 弹结算画面。
+        Script(
+            path: "death_show.rhai",
+            after: ["combat"],
+        ),
+        // R 键 → emit RestartGame。
+        Script(path: "death_restart.rhai"),
+        // RestartGame：重置 player / level / 清场上所有动态实体。
+        // 跑在 cell-style "其它 plugin 之后"——保证它们没看到上一帧 emit 的
+        // RestartGame 之前不会被本 plugin 干扰。
+        Script(
+            path: "restart_world.rhai",
+            after: ["death::death_restart"],
+        ),
+    ],
+)

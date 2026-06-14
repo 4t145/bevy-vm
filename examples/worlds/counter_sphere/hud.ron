@@ -1,0 +1,10 @@
+// hud plugin：左下角显示 HP / Kills / 存活敌人数。
+(
+    dependencies: ["player", "enemy"],
+    components: [
+        (name: "HudKind", default: (kind: "")),
+    ],
+    systems: [
+        Script(path: "hud.rhai"),
+    ],
+)

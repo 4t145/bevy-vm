@@ -1,0 +1,44 @@
+(
+    components: [
+        // 弹跳脚本用来记录每个实体的运动相位。
+        (name: "Mover", default: (vx: 0.0, bound: 5.0)),
+    ],
+    entities: [
+        (components: {
+            "Position": (x: -4.0, y: 0.0, z: 0.0),
+            "Velocity": (x: 0.08, y: 0.0, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Cube": (size: [1.0, 1.0, 1.0]) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.9, green: 0.3, blue: 0.3, alpha: 1.0) },
+                ) },
+            ),
+            "Mover": (bound: 4.0),
+        }),
+        (components: {
+            "Position": (x: 0.0, y: 0.0, z: 0.0),
+            "Velocity": (x: 0.0, y: 0.06, z: 0.0),
+            "Mesh3dRender": (
+                mesh: { "Sphere": (radius: 0.7) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.3, green: 0.6, blue: 0.9, alpha: 1.0) },
+                ) },
+            ),
+            "Mover": (bound: 3.0),
+        }),
+        (components: {
+            "Position": (x: 4.0, y: 0.0, z: 0.0),
+            "Velocity": (x: 0.0, y: 0.0, z: 0.1),
+            "Mesh3dRender": (
+                mesh: { "Cube": (size: [0.8, 0.8, 0.8]) },
+                material: { "Pbr": (
+                    base_color: { "Srgba": (red: 0.4, green: 0.85, blue: 0.4, alpha: 1.0) },
+                ) },
+            ),
+            "Mover": (bound: 5.0),
+        }),
+    ],
+    systems: [
+        Script(path: "bounce.rhai"),
+    ],
+)

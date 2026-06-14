@@ -1,0 +1,19 @@
+// anim plugin：tile 视觉刷新 + hover 状态维护。
+//
+// 与参考项目 bevy-lab/anim.rs 对齐——每帧扫所有 tile，按 (state, mine, adj,
+// hover) 算目标色写到 Sprite2d/TextLabel。VM 端暂用瞬切（无 lerp），等
+// hover 闪光相关需求出现再加平滑动画。
+//
+// Hovered 是本 plugin 独有的视图层状态，每帧根据 PickOver/PickOut 维护。
+(
+    dependencies: ["cell"],
+    components: [
+        (name: "Hovered", default: (value: 0)),
+    ],
+    systems: [
+        // 跑在 cell 之后——读到本帧 cell handler 处理后的状态，视觉同帧
+        // 反映点击结果（已揭开格立刻变色，与参考项目 anim::animate_cell_colors
+        // 跑在 ui 系统之后语义对齐）。
+        Script(path: "anim.rhai", after: ["cell"]),
+    ],
+)

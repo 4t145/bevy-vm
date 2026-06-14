@@ -1,0 +1,16 @@
+// terrain plugin：随机生成的障碍物地形。
+//
+// 第一帧把"已生成？"flag 写到 TerrainState 上——多次 tick 不重复 spawn。
+// 障碍物是 Cuboid，随机散布在 arena 内（避开玩家初始点）。
+(
+    components: [
+        (name: "TerrainState", default: (generated: 0)),
+        (name: "Obstacle", default: ()),
+    ],
+    entities: [
+        (components: { "TerrainState": (generated: 0) }),
+    ],
+    systems: [
+        Script(path: "terrain.rhai"),
+    ],
+)

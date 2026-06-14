@@ -1,0 +1,29 @@
+// pause plugin：监听 wave::WaveCompleted / combat::PlayerDied 触发暂停；
+// 监听 UpgradePicked / death::RestartGame 解除。
+//
+// 实际调 pause()/resume() host 函数——它们写 VmPauseState resource，
+// 让 advance_time 注入 0 dt，所有 run_if: ["!is_paused()"] 的 system 跳过。
+(
+    dependencies: ["wave"],
+    events: [
+        // upgrade plugin emit；pause + wave plugin 都消费。
+        (name: "UpgradePicked", default: (kind: "")),
+    ],
+    systems: [
+        // pause 集中处理多类事件——必须跑在所有 emitter 之后，事件单缓冲下
+        // 才能同帧看到本帧 emit：
+        // - wave emit WaveCompleted → pause()  (wave 在 pause 前注册)
+        // - combat emit PlayerDied → pause()  (combat 在 pause 前)
+        // - upgrade emit UpgradePicked → resume()  (upgrade 在 pause 之后注册)
+        // - death emit RestartGame → resume()  (death 在 pause 之后注册)
+        Script(
+            path: "pause.rhai",
+            after: [
+                "wave::wave_tick",         // 同帧消费 WaveCompleted → pause()
+                "combat",                   // 同帧消费 PlayerDied → pause()
+                "upgrade::upgrade_pick",   // 同帧消费 UpgradePicked → resume()
+                "death",                    // 同帧消费 RestartGame → resume()
+            ],
+        ),
+    ],
+)

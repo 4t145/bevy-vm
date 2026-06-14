@@ -1,103 +1,129 @@
-//! [`ron::Value`] 与 [`rhai::Dynamic`] 之间的手写双向转换。
+//! Hand-written bidirectional conversion between [`serde_json::Value`] and
+//! [`rhai::Dynamic`].
 //!
-//! 不走 serde 往返：`ron::Value` 是带标签的枚举，serde 化后脚本会看到
-//! `#{ Number: #{ Float: 3.0 } }` 这种内部表示。手写映射保证脚本侧看到的是
-//! 朴素的数字/字符串/数组/对象。
+//! We do not piggy-back on serde round-trips here: the script side wants
+//! plain numbers / strings / arrays / maps, and a serde-driven detour would
+//! add little value. Numbers go through `i64` first and fall back to `f64`,
+//! matching what scripts expect from arithmetic.
 
 #[cfg(test)]
 mod tests;
 
 use rhai::{Dynamic, Map};
-use ron::Value;
-use ron::value::Number;
+use serde_json::Value;
+use thiserror::Error;
 
-/// 把一个 [`ron::Value`] 转成脚本侧的 [`Dynamic`]。
+/// Errors raised while converting a [`rhai::Dynamic`] into a [`Value`].
+#[derive(Debug, Error)]
+pub enum ConvertError {
+    /// Failed to extract a string from a `Dynamic` that reported `is_string`.
+    #[error("failed to read string value: {type_name}")]
+    String {
+        /// Reported Rhai type name.
+        type_name: String,
+    },
+    /// Failed to extract an array from a `Dynamic` that reported `is_array`.
+    #[error("failed to read array value: {type_name}")]
+    Array {
+        /// Reported Rhai type name.
+        type_name: String,
+    },
+    /// Script value type has no [`Value`] representation (e.g. custom host
+    /// types registered with the engine).
+    #[error("script value of type `{type_name}` cannot be converted to a JSON value")]
+    Unsupported {
+        /// Reported Rhai type name.
+        type_name: String,
+    },
+}
+
+/// Convert a [`Value`] into a script-side [`Dynamic`].
 pub fn to_dynamic(value: &Value) -> Dynamic {
     match value {
-        Value::Unit | Value::Option(None) => Dynamic::UNIT,
+        Value::Null => Dynamic::UNIT,
         Value::Bool(b) => Dynamic::from(*b),
-        Value::Char(c) => Dynamic::from(*c),
         Value::String(s) => Dynamic::from(s.clone()),
-        Value::Number(number) => number_to_dynamic(*number),
-        Value::Option(Some(inner)) => to_dynamic(inner),
-        Value::Seq(items) => Dynamic::from_array(items.iter().map(to_dynamic).collect()),
-        Value::Map(map) => {
+        Value::Number(number) => number_to_dynamic(number),
+        Value::Array(items) => Dynamic::from_array(items.iter().map(to_dynamic).collect()),
+        Value::Object(map) => {
             let entries = map
                 .iter()
-                .filter_map(|(key, val)| map_key(key).map(|name| (name.into(), to_dynamic(val))));
+                .map(|(key, val)| (key.clone().into(), to_dynamic(val)));
             Dynamic::from_map(entries.collect::<Map>())
         }
     }
 }
 
-/// 把脚本侧的 [`Dynamic`] 转回 [`ron::Value`]。
+/// Convert a script-side [`Dynamic`] back into a [`Value`].
 ///
 /// # Errors
 ///
-/// 遇到无法表示为 [`ron::Value`] 的脚本值（如自定义宿主类型）时返回描述性错误。
-pub fn from_dynamic(value: Dynamic) -> Result<Value, String> {
+/// Returns [`ConvertError::Unsupported`] for script values that have no
+/// JSON representation (e.g. custom host types).
+pub fn from_dynamic(value: Dynamic) -> Result<Value, ConvertError> {
     if value.is_unit() {
-        return Ok(Value::Unit);
+        return Ok(Value::Null);
     }
     if let Ok(b) = value.as_bool() {
         return Ok(Value::Bool(b));
     }
     if let Ok(i) = value.as_int() {
-        return Ok(Value::Number(Number::new(i)));
+        return Ok(Value::Number(i.into()));
     }
     if let Ok(f) = value.as_float() {
-        return Ok(Value::Number(Number::new(f)));
+        return Ok(serde_json::Number::from_f64(f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null));
     }
     if let Ok(c) = value.as_char() {
-        return Ok(Value::Char(c));
+        return Ok(Value::String(c.to_string()));
     }
     if value.is_string() {
-        let text = value
-            .into_string()
-            .map_err(|t| format!("无法读取字符串值: {t}"))?;
+        let text = value.into_string().map_err(|t| ConvertError::String {
+            type_name: t.to_owned(),
+        })?;
         return Ok(Value::String(text));
     }
     if value.is_array() {
-        let array = value
-            .into_array()
-            .map_err(|t| format!("无法读取数组值: {t}"))?;
+        let array = value.into_array().map_err(|t| ConvertError::Array {
+            type_name: t.to_owned(),
+        })?;
         let items = array
             .into_iter()
             .map(from_dynamic)
             .collect::<Result<_, _>>()?;
-        return Ok(Value::Seq(items));
+        return Ok(Value::Array(items));
     }
     if value.is_map() {
         return map_from_dynamic(value);
     }
-    Err(format!(
-        "脚本值类型 `{}` 无法转为 RON 值",
-        value.type_name()
-    ))
+    Err(ConvertError::Unsupported {
+        type_name: value.type_name().to_owned(),
+    })
 }
 
-/// 把一个 RON 数值转成脚本侧 [`Dynamic`]（整数走 INT，浮点走 FLOAT）。
-fn number_to_dynamic(number: Number) -> Dynamic {
-    match number.as_i64() {
-        Some(i) => Dynamic::from(i),
-        None => Dynamic::from(number.into_f64()),
+/// Map a JSON number to script-side [`Dynamic`] (integers go to `INT`, the
+/// rest to `FLOAT`).
+fn number_to_dynamic(number: &serde_json::Number) -> Dynamic {
+    if let Some(i) = number.as_i64() {
+        return Dynamic::from(i);
     }
-}
-
-/// 取映射键的字符串形式；非字符串键不可表示，返回 `None`。
-fn map_key(key: &Value) -> Option<String> {
-    match key {
-        Value::String(s) => Some(s.clone()),
-        _ => None,
+    if let Some(u) = number.as_u64() {
+        // Rhai's INT is i64, fit into it where possible; otherwise fall back
+        // to f64.
+        if let Ok(signed) = i64::try_from(u) {
+            return Dynamic::from(signed);
+        }
     }
+    Dynamic::from(number.as_f64().unwrap_or(0.0))
 }
 
-/// 把脚本侧 map 转成 RON 映射。
-fn map_from_dynamic(value: Dynamic) -> Result<Value, String> {
+/// Convert a script-side map into a JSON object.
+fn map_from_dynamic(value: Dynamic) -> Result<Value, ConvertError> {
     let map = value.cast::<Map>();
-    let mut result = ron::Map::new();
+    let mut result = serde_json::Map::new();
     for (key, val) in map {
-        result.insert(Value::String(key.into()), from_dynamic(val)?);
+        result.insert(key.into(), from_dynamic(val)?);
     }
-    Ok(Value::Map(result))
+    Ok(Value::Object(result))
 }

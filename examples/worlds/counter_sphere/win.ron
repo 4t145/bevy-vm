@@ -1,0 +1,20 @@
+// win plugin：5 杀达成 → 弹 VICTORY；按 R → emit RestartGame。
+// 其他 plugin 听 RestartGame 自行重置（敌人 / 障碍 / 玩家 hp+pos+kills）。
+(
+    dependencies: ["player", "enemy", "terrain"],
+    components: [
+        (name: "WinScreen", default: ()),
+    ],
+    events: [
+        (name: "RestartGame", default: ()),
+    ],
+    systems: [
+        // 5 杀达成弹画面。
+        Script(path: "win.rhai"),
+        // R 键 → emit RestartGame；同帧业务清场。
+        Script(path: "win_restart.rhai"),
+        // 收到 RestartGame → 重置玩家 / despawn 敌人 + 障碍 + 子弹 + UI；
+        // 让 enemy_spawn / terrain 看到 spawn flag=0 重新生成。
+        Script(path: "restart_world.rhai", after: ["win::win_restart"]),
+    ],
+)

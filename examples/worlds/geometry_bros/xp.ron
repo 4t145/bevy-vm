@@ -1,0 +1,28 @@
+// xp plugin：经验球 spawn（监听 EnemyDied）+ 吸附拾取 + emit XpGained。
+//
+// 100% 掉落（MVP 简化——参考项目是按敌人类型概率）。
+// 拾取距离 0.6——玩家走近自动吸。
+(
+    dependencies: ["player", "combat"],
+    components: [
+        (
+            name: "ExpOrb",
+            default: (amount: 1),
+        ),
+    ],
+    events: [
+        (name: "XpGained", default: (amount: 1)),
+    ],
+    systems: [
+        Script(
+            path: "xp_drop.rhai",
+            run_if: ["!is_paused()"],
+            after: ["combat"],   // 读 combat 同帧 emit 的 EnemyDied
+        ),
+        Script(
+            path: "xp_pickup.rhai",
+            run_if: ["!is_paused()"],
+            after: ["xp::xp_drop"],  // 同 plugin 内 system 名 = `<plugin>::<file_stem>`
+        ),
+    ],
+)

@@ -1,0 +1,7 @@
+// tiles plugin：声明一个 Tile dynamic 组件。
+// 短名 `Tile` 在注册期前缀化成 `tiles::Tile`。
+(
+    components: [
+        (name: "Tile", default: (kind: "", value: 0)),
+    ],
+)

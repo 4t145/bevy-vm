@@ -1,0 +1,23 @@
+// projectile plugin：投射物组件 + 飞行 + 寿命到期 despawn。
+//
+// 实际 spawn 由 shooting plugin 处理；本 plugin 只声明 schema 和管 lifecycle。
+// 命中由 combat plugin 处理（读 Projectile/Enemy 距离做碰撞）。
+(
+    components: [
+        (
+            name: "Projectile",
+            default: (
+                vx: 0.0,
+                vz: 0.0,
+                damage: 0,
+                lifetime: 0.0,
+            ),
+        ),
+    ],
+    systems: [
+        Script(
+            path: "projectile.rhai",
+            run_if: ["!is_paused()"],
+        ),
+    ],
+)
