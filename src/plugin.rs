@@ -34,8 +34,6 @@
 //! ```
 
 #[cfg(feature = "bevy-bridge")]
-pub mod cursor;
-#[cfg(feature = "bevy-bridge")]
 pub mod input;
 #[cfg(feature = "bevy-bridge")]
 pub mod picking;

@@ -666,6 +666,8 @@ mod render_host {
     use bevy::scene::{Scene, SceneRoot};
     use bevy::sprite::Text2d;
     use bevy::text::{TextColor, TextFont};
+    use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+    use bevy_ecs::query::With;
     use bevy_ecs::resource::Resource;
     use rhai::{Dynamic, Engine, FLOAT, Map};
     use std::rc::Rc;
@@ -1006,6 +1008,43 @@ mod render_host {
                     em.insert(Transform::from_rotation(rotation));
                 }
                 Ok(())
+            },
+        );
+
+        // ---- set_cursor_grab(bool) —— 锁/解锁主窗口光标。
+        // true  → CursorGrabMode::Locked + visible=false（FPS / 鼠标视角模式）
+        // false → CursorGrabMode::None   + visible=true  （正常自由光标）
+        // 直接动主世界 PrimaryWindow.CursorOptions——单 World 架构下脚本拥有
+        // 这个权限，省掉 cursor plugin / 事件桥那一跳。
+        let slots_cg = Rc::clone(slots);
+        engine.register_fn(
+            "set_cursor_grab",
+            move |grab: bool| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_cg)?;
+                let mut q = world.query_filtered::<&mut CursorOptions, With<PrimaryWindow>>();
+                if let Ok(mut cursor) = q.single_mut(world) {
+                    if grab {
+                        cursor.grab_mode = CursorGrabMode::Locked;
+                        cursor.visible = false;
+                    } else {
+                        cursor.grab_mode = CursorGrabMode::None;
+                        cursor.visible = true;
+                    }
+                }
+                Ok(())
+            },
+        );
+
+        // ---- is_cursor_grabbed() -> bool —— 当前光标是否被锁定。
+        let slots_cs = Rc::clone(slots);
+        engine.register_fn(
+            "is_cursor_grabbed",
+            move || -> Result<bool, Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_cs)?;
+                let mut q = world.query_filtered::<&CursorOptions, With<PrimaryWindow>>();
+                Ok(q.single(world)
+                    .map(|c| c.grab_mode != CursorGrabMode::None)
+                    .unwrap_or(false))
             },
         );
     }

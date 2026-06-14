@@ -7,7 +7,6 @@
 
 use bevy::prelude::*;
 use bevy_vm::insert_vm_instance;
-use bevy_vm::plugin::cursor::CursorPlugin;
 use bevy_vm::plugin::input::InputPlugin;
 use bevy_vm::plugin::picking::PickingPlugin;
 use bevy_vm::plugin::{AppVmPluginExt, BuilderVmPluginExt};
@@ -31,14 +30,11 @@ fn main() {
 
     let input = InputPlugin;
     let picking = PickingPlugin;
-    let cursor = CursorPlugin;
 
-    let vm = build_vm(app.world_mut(), &cli_world, &input, &picking, &cursor)
-        .expect("load initial world");
+    let vm = build_vm(app.world_mut(), &cli_world, &input, &picking).expect("load initial world");
     insert_vm_instance(&mut app, vm);
     app.add_vm_plugin(&input);
     app.add_vm_plugin(&picking);
-    app.add_vm_plugin(&cursor);
 
     app.add_systems(Startup, setup_lighting);
     app.run();
@@ -55,12 +51,10 @@ fn build_vm(
     path: &std::path::Path,
     input: &InputPlugin,
     picking: &PickingPlugin,
-    cursor: &CursorPlugin,
 ) -> Result<VmInstance, bevy_vm::VmError> {
     VmInstanceBuilder::new()
         .add_plugin(input)?
         .add_plugin(picking)?
-        .add_plugin(cursor)?
         .load(world, path)
 }
 
