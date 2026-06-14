@@ -89,34 +89,34 @@ pub enum VmError {
     #[error("script runtime error: {0}")]
     ScriptRuntime(String),
 
-    /// Plugin loader detected a cycle in dependency graph.
-    #[error("plugin dependency cycle: {chain}")]
-    PluginCycle {
+    /// Module loader detected a cycle in dependency graph.
+    #[error("module dependency cycle: {chain}")]
+    ModuleCycle {
         /// `a -> b -> c -> a`-style chain that closes the cycle.
         chain: String,
     },
 
-    /// Plugin declared a dependency on a name that no plugin in the load
+    /// Module declared a dependency on a name that no module in the load
     /// graph provides.
-    #[error("plugin `{plugin}` depends on `{missing}` but no such plugin was loaded")]
-    PluginMissingDependency {
-        /// Plugin declaring the dependency.
-        plugin: String,
+    #[error("module `{module}` depends on `{missing}` but no such module was loaded")]
+    ModuleMissingDependency {
+        /// Module declaring the dependency.
+        module: String,
         /// Dependency name that could not be resolved.
         missing: String,
     },
 
-    /// Two plugins declare a component / event of the same fully-qualified
+    /// Two modules declare a component / event of the same fully-qualified
     /// name. Always a programmer error — namespacing should make this
     /// impossible in normal use; this variant catches collisions on the
     /// global (host) namespace.
-    #[error("plugin namespace collision: `{name}` declared by both `{first}` and `{second}`")]
-    PluginNameCollision {
-        /// Fully qualified `<plugin>::<short>` (or `<short>` for global) name.
+    #[error("module namespace collision: `{name}` declared by both `{first}` and `{second}`")]
+    ModuleNameCollision {
+        /// Fully qualified `<module>::<short>` (or `<short>` for global) name.
         name: String,
-        /// First plugin that registered the name.
+        /// First module that registered the name.
         first: String,
-        /// Second plugin that tried to register the same name.
+        /// Second module that tried to register the same name.
         second: String,
     },
 

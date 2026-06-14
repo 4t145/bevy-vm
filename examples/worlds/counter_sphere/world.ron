@@ -10,7 +10,7 @@
 //   crosshair / hud / win 独立
 (
     seed: Some(20251214),
-    plugins: [
+    modules: [
         "player",
         "camera",
         "terrain",

@@ -76,8 +76,8 @@ impl VmInstanceBuilder {
     ) -> Result<VmInstance, VmError> {
         let config_path = config_path.as_ref();
         let resolved = resolve_root_path(config_path);
-        let plugins = crate::plugin_loader::load_root(&resolved)?;
-        self.build_from_plugins(world, plugins)
+        let plugins = crate::world_module::load_root(&resolved)?;
+        self.build_from_modules(world, plugins)
     }
 
     /// Like [`Self::load`] but reads inline `text`. plugin list must be empty.
@@ -93,18 +93,18 @@ impl VmInstanceBuilder {
         base_dir: impl AsRef<Path>,
     ) -> Result<VmInstance, VmError> {
         let config = WorldConfig::from_text(text, format)?;
-        if !config.plugins.is_empty() {
+        if !config.modules.is_empty() {
             return Err(VmError::Parse(
-                "inline `from_text` does not support `plugins:` field; use `load()` with a file path"
+                "inline `from_text` does not support `modules:` field; use `load()` with a file path"
                     .to_owned(),
             ));
         }
-        let plugins = vec![crate::plugin_loader::LoadedPlugin {
-            name: crate::plugin_loader::ROOT_PLUGIN.to_owned(),
+        let plugins = vec![crate::world_module::LoadedModule {
+            name: crate::world_module::ROOT_MODULE.to_owned(),
             config,
             base_dir: base_dir.as_ref().to_path_buf(),
         }];
-        self.build_from_plugins(world, plugins)
+        self.build_from_modules(world, plugins)
     }
 
     /// JSON convenience.
@@ -137,10 +137,10 @@ impl VmInstanceBuilder {
         self.from_text(world, text, ConfigFormat::Ron, base_dir)
     }
 
-    fn build_from_plugins(
+    fn build_from_modules(
         mut self,
         world: &mut World,
-        plugins: Vec<crate::plugin_loader::LoadedPlugin>,
+        plugins: Vec<crate::world_module::LoadedModule>,
     ) -> Result<VmInstance, VmError> {
         let id = VmId::next();
         let mut components = ComponentRegistry::with_builtins(world);
@@ -150,7 +150,7 @@ impl VmInstanceBuilder {
 
         let root_seed = plugins
             .iter()
-            .find(|p| p.name == crate::plugin_loader::ROOT_PLUGIN)
+            .find(|p| p.name == crate::world_module::ROOT_MODULE)
             .and_then(|p| p.config.seed);
         let rng = match root_seed {
             Some(seed) => crate::random::VmRng::from_seed(seed),
@@ -158,14 +158,14 @@ impl VmInstanceBuilder {
         };
 
         for plugin in &plugins {
-            register_plugin_components(world, &mut components, plugin)?;
-            register_plugin_events(&mut self.events, plugin)?;
+            register_module_components(world, &mut components, plugin)?;
+            register_module_events(&mut self.events, plugin)?;
         }
         let components = Rc::new(components);
         let events = Rc::new(self.events);
 
         for plugin in &plugins {
-            spawn_plugin_entities(world, &components, plugin, id)?;
+            spawn_module_entities(world, &components, plugin, id)?;
         }
 
         let systems = schedule_scripts(&plugins, &components, &events, id)?;
@@ -516,10 +516,10 @@ fn load_system(
     Ok(Box::new(system))
 }
 
-fn register_plugin_components(
+fn register_module_components(
     world: &mut World,
     registry: &mut ComponentRegistry,
-    plugin: &crate::plugin_loader::LoadedPlugin,
+    plugin: &crate::world_module::LoadedModule,
 ) -> Result<(), VmError> {
     for decl in &plugin.config.components {
         let name = qualify_name(&plugin.name, &decl.name);
@@ -528,9 +528,9 @@ fn register_plugin_components(
     Ok(())
 }
 
-fn register_plugin_events(
+fn register_module_events(
     registry: &mut EventRegistry,
-    plugin: &crate::plugin_loader::LoadedPlugin,
+    plugin: &crate::world_module::LoadedModule,
 ) -> Result<(), VmError> {
     for decl in &plugin.config.events {
         let name = qualify_name(&plugin.name, &decl.name);
@@ -540,17 +540,17 @@ fn register_plugin_events(
 }
 
 fn qualify_name(plugin: &str, short: &str) -> String {
-    if plugin == crate::plugin_loader::ROOT_PLUGIN || short.contains("::") {
+    if plugin == crate::world_module::ROOT_MODULE || short.contains("::") {
         short.to_owned()
     } else {
         format!("{plugin}::{short}")
     }
 }
 
-fn spawn_plugin_entities(
+fn spawn_module_entities(
     world: &mut World,
     registry: &ComponentRegistry,
-    plugin: &crate::plugin_loader::LoadedPlugin,
+    plugin: &crate::world_module::LoadedModule,
     vm_id: VmId,
 ) -> Result<(), VmError> {
     for entity_config in &plugin.config.entities {
@@ -562,7 +562,7 @@ fn spawn_plugin_entities(
 fn spawn_entity(
     world: &mut World,
     registry: &ComponentRegistry,
-    plugin: &crate::plugin_loader::LoadedPlugin,
+    plugin: &crate::world_module::LoadedModule,
     entity_config: &EntityConfig,
     vm_id: VmId,
 ) -> Result<(), VmError> {
@@ -659,7 +659,7 @@ fn init_dynamic_component(
 }
 
 fn schedule_scripts(
-    plugins: &[crate::plugin_loader::LoadedPlugin],
+    plugins: &[crate::world_module::LoadedModule],
     components: &Rc<ComponentRegistry>,
     events: &Rc<EventRegistry>,
     vm_id: VmId,
@@ -667,7 +667,7 @@ fn schedule_scripts(
     use std::collections::{HashMap, HashSet};
 
     struct ScriptMeta<'a> {
-        plugin: &'a crate::plugin_loader::LoadedPlugin,
+        plugin: &'a crate::world_module::LoadedModule,
         config: &'a SystemConfig,
         full_name: String,
         sets: Vec<String>,

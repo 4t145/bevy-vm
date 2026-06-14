@@ -13,12 +13,12 @@ pub mod config;
 pub mod error;
 pub mod event;
 pub mod plugin;
-pub mod plugin_loader;
 pub mod random;
 pub mod resource;
 pub mod system;
 pub mod vm;
 pub mod world_access;
+pub mod world_module;
 
 pub use error::VmError;
 pub use vm::{VmId, VmInstance, VmInstanceBuilder, VmRegistry, VmTag};

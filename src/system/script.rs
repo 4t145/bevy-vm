@@ -230,7 +230,7 @@ where
     if name.contains("::") {
         return name.to_owned();
     }
-    if plugin_name != crate::plugin_loader::ROOT_PLUGIN {
+    if plugin_name != crate::world_module::ROOT_MODULE {
         let qualified = format!("{plugin_name}::{name}");
         if exists(&qualified) {
             return qualified;

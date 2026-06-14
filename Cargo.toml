@@ -46,7 +46,3 @@ config-toon = []
 [[example]]
 name = "viewer"
 required-features = ["bevy-bridge"]
-
-[[example]]
-name = "drag"
-required-features = ["bevy-bridge"]

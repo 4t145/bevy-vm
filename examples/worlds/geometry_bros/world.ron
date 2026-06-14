@@ -10,7 +10,7 @@
 //   pause / hud / camera 横向独立
 (
     seed: Some(20251211),
-    plugins: [
+    modules: [
         "player",
         "enemy",
         "shooting",

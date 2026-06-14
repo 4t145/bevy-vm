@@ -75,7 +75,7 @@ fn missing_dependency_reports_error() {
     std::fs::create_dir_all(&dir).ok();
     std::fs::write(
         dir.join("world.ron"),
-        r#"(plugins: ["only"], entities: [])"#,
+        r#"(modules: ["only"], entities: [])"#,
     )
     .unwrap();
     std::fs::write(
@@ -91,14 +91,14 @@ fn missing_dependency_reports_error() {
     let Err(err) = result else {
         panic!("missing dependency should fail");
     };
-    let VmError::PluginMissingDependency {
-        ref plugin,
+    let VmError::ModuleMissingDependency {
+        ref module,
         ref missing,
     } = err
     else {
         panic!("got {err:?}");
     };
-    assert_eq!(plugin, "only");
+    assert_eq!(module, "only");
     assert_eq!(missing, "ghost");
 
     std::fs::remove_dir_all(&dir).ok();
@@ -111,7 +111,7 @@ fn dependency_cycle_reports_error() {
     std::fs::create_dir_all(&dir).ok();
     std::fs::write(
         dir.join("world.ron"),
-        r#"(plugins: ["a", "b"], entities: [])"#,
+        r#"(modules: ["a", "b"], entities: [])"#,
     )
     .unwrap();
     std::fs::write(dir.join("a.ron"), r#"(dependencies: ["b"], entities: [])"#).unwrap();
@@ -124,7 +124,7 @@ fn dependency_cycle_reports_error() {
     let Err(err) = result else {
         panic!("cycle should fail");
     };
-    assert!(matches!(err, VmError::PluginCycle { .. }), "got {err:?}");
+    assert!(matches!(err, VmError::ModuleCycle { .. }), "got {err:?}");
 
     std::fs::remove_dir_all(&dir).ok();
 }

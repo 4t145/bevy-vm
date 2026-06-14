@@ -29,11 +29,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
-/// 一个完整世界 / plugin 的声明式描述。
+/// 一个完整世界 / module 的声明式描述。
 ///
-/// 同一份 schema 既描述顶级 `world.ron` 也描述被 `plugins:` 引用的子文件——
-/// 后者作为 plugin 加载时，文件名 stem 即 plugin 名（与 Rust mod 一致）。
-/// plugin 内声明的 components/events 在注册期带前缀变成 `<plugin>::<short>`，
+/// 同一份 schema 既描述顶级 `world.ron` 也描述被 `modules:` 引用的子文件——
+/// 后者作为 module 加载时，文件名 stem 即 module 名（与 Rust mod 一致）。
+/// module 内声明的 components/events 在注册期带前缀变成 `<module>::<short>`，
 /// 顶级 world.ron 自身视作"全局空间"——它的 components/events 不带前缀。
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorldConfig {
@@ -58,20 +58,20 @@ pub struct WorldConfig {
     /// 此时各次启动结果不同；指定整数后同一配置 + 同样事件输入序列可
     /// 重现完全相同的脚本输出，便于测试。
     ///
-    /// 仅顶级 world.ron 生效；plugin 文件中的 seed 字段被忽略——一个世界
-    /// 一个种子，避免 plugin 拼装出歧义。
+    /// 仅顶级 world.ron 生效；module 文件中的 seed 字段被忽略——一个世界
+    /// 一个种子，避免 module 拼装出歧义。
     #[serde(default)]
     pub seed: Option<u64>,
-    /// 引用的 plugin 文件路径，相对当前文件所在目录解析。
+    /// 引用的 module 文件路径，相对当前文件所在目录解析。
     ///
     /// 加载顺序最终由拓扑排序决定（依赖在前）；本字段只是声明集合。
     /// 路径可省略 `.ron` 扩展——加载器会自动补全。
     #[serde(default)]
-    pub plugins: Vec<String>,
-    /// 本 plugin / world 显式声明的依赖（plugin 名）。加载器据此排序。
+    pub modules: Vec<String>,
+    /// 本 module / world 显式声明的依赖（module 名）。加载器据此排序。
     ///
-    /// 写在依赖里但没在 `plugins:` 里出现的 plugin 视为缺失，加载报错。
-    /// 顶级 world.ron 通常不写本字段——`plugins:` 列出的就是它要的全部。
+    /// 写在依赖里但没在 `modules:` 里出现的 module 视为缺失，加载报错。
+    /// 顶级 world.ron 通常不写本字段——`modules:` 列出的就是它要的全部。
     #[serde(default)]
     pub dependencies: Vec<String>,
 }

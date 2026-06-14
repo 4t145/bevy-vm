@@ -14,7 +14,7 @@
 // 单位约定：Camera2d 默认 WindowSize → 1 世界单位 = 1 像素。
 (
     seed: Some(12648430),
-    plugins: ["board", "cell", "difficulty", "timer", "anim", "ui", "restart"],
+    modules: ["board", "cell", "difficulty", "timer", "anim", "ui", "restart"],
     entities: [
         // 棋盘元数据单例。各 plugin 通过 query("board::Board") 找它。
         (components: {
