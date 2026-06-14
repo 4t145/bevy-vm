@@ -6,11 +6,11 @@
 //! drop Bevy native components on the same entity directly.
 
 use bevy::prelude::*;
+use bevy_vm::insert_vm_instance;
 use bevy_vm::plugin::cursor::CursorPlugin;
 use bevy_vm::plugin::input::InputPlugin;
 use bevy_vm::plugin::picking::PickingPlugin;
 use bevy_vm::plugin::{AppVmPluginExt, BuilderVmPluginExt};
-use bevy_vm::render::insert_vm_instance;
 use bevy_vm::{VmInstance, VmInstanceBuilder};
 use std::path::PathBuf;
 

@@ -15,14 +15,13 @@ pub mod event;
 pub mod plugin;
 pub mod plugin_loader;
 pub mod random;
-#[cfg(feature = "bevy-bridge")]
-pub mod render;
 pub mod resource;
 pub mod system;
 pub mod vm;
-pub mod vm_id;
 pub mod world_access;
 
 pub use error::VmError;
-pub use vm::{VmInstance, VmInstanceBuilder, VmRegistry};
-pub use vm_id::{VmId, VmTag};
+pub use vm::{VmId, VmInstance, VmInstanceBuilder, VmRegistry, VmTag};
+
+#[cfg(feature = "bevy-bridge")]
+pub use vm::{VmAppPlugin, VmEventAppExt, VmTickSet, despawn_tagged_entities, insert_vm_instance};

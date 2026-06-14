@@ -49,7 +49,7 @@ const MAX_EXPR_DEPTH: usize = 128;
 /// 累赘（init_board 这种把数组/对象字面量塞进函数的写法很常见）。
 const MAX_FUNCTION_EXPR_DEPTH: usize = 128;
 
-use crate::vm_id::{VmId, VmTag};
+use crate::vm::id::{VmId, VmTag};
 
 /// 实体在脚本侧的表示：实体位编码后的整数。
 type ScriptEntity = i64;

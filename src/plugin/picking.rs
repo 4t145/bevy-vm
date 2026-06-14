@@ -8,7 +8,7 @@
 use crate::VmInstanceBuilder;
 use crate::error::VmError;
 use crate::plugin::VmPlugin;
-use crate::vm_id::VmTag;
+use crate::vm::id::VmTag;
 use bevy::app::App;
 use bevy::picking::events::{Click, Out, Over, Pointer};
 use bevy::picking::mesh_picking::MeshPickingPlugin;

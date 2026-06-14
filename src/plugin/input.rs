@@ -5,7 +5,7 @@
 //! `bevy/serialize` in `Cargo.toml`), so the bridge is a thin pass-through:
 //! `build_vm` registers each channel as a typed VM event under a stable
 //! name, and `build_app` installs the matching pump systems via
-//! [`crate::render::VmEventAppExt::add_vm_event`].
+//! [`crate::vm::VmEventAppExt::add_vm_event`].
 //!
 //! # Channel names
 //!
@@ -35,7 +35,7 @@
 use crate::VmInstanceBuilder;
 use crate::error::VmError;
 use crate::plugin::VmPlugin;
-use crate::render::VmEventAppExt;
+use crate::vm::VmEventAppExt;
 use bevy::app::App;
 use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
 use bevy::input::mouse::{MouseButtonInput, MouseMotion, MouseWheel};
@@ -72,7 +72,7 @@ pub const KEYBOARD_FOCUS_LOST: &str = "KeyboardFocusLost";
 ///
 /// Only need a subset? Don't use this plugin: register the events you want
 /// directly with [`VmInstanceBuilder::with_event`] and
-/// [`crate::render::VmEventAppExt::add_vm_event`].
+/// [`crate::vm::VmEventAppExt::add_vm_event`].
 pub struct InputPlugin;
 
 impl VmPlugin for InputPlugin {

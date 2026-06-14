@@ -1,7 +1,7 @@
 //! VM ↔ Bevy `App` 接入层。
 //!
 //! 单 World 架构后，本模块只剩两个职责：
-//! 1. **驱动 [`VmInstance`] 每帧 tick**——通过 [`VmViewerPlugin`] 装的
+//! 1. **驱动 [`VmInstance`] 每帧 tick**——通过 [`VmAppPlugin`] 装的
 //!    exclusive system [`tick_all_vms`]。多个 VM 都活在 [`VmRegistry`]
 //!    里，按声明顺序逐个 tick。
 //! 2. **事件桥**：[`VmEventAppExt`] 把 Bevy 端 typed `Events<T>` 与 VM 的
@@ -14,7 +14,7 @@ use crate::{VmInstance, VmRegistry};
 use bevy::prelude::*;
 
 /// 驱动所有 [`VmInstance`] 的 plugin。挂上后每帧自动推进 VM。
-pub struct VmViewerPlugin;
+pub struct VmAppPlugin;
 
 /// SystemSet covering the per-frame VM tick. Pump systems wired through
 /// [`VmEventAppExt`] use `.before(VmTickSet)` / `.after(VmTickSet)` to
@@ -22,7 +22,7 @@ pub struct VmViewerPlugin;
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub struct VmTickSet;
 
-impl Plugin for VmViewerPlugin {
+impl Plugin for VmAppPlugin {
     fn build(&self, app: &mut App) {
         if app.world().get_non_send_resource::<VmRegistry>().is_none() {
             app.insert_non_send_resource(VmRegistry::new());
@@ -32,11 +32,11 @@ impl Plugin for VmViewerPlugin {
 }
 
 /// Insert a built [`VmInstance`] into the app's [`VmRegistry`] (creating
-/// it if absent) and ensure [`VmViewerPlugin`] is wired.
+/// it if absent) and ensure [`VmAppPlugin`] is wired.
 pub fn insert_vm_instance(app: &mut App, vm: VmInstance) -> crate::VmId {
     if app.world().get_non_send_resource::<VmRegistry>().is_none() {
         app.insert_non_send_resource(VmRegistry::new());
-        app.add_plugins(VmViewerPlugin);
+        app.add_plugins(VmAppPlugin);
     }
     let mut registry = app.world_mut().non_send_resource_mut::<VmRegistry>();
     registry.insert(vm)

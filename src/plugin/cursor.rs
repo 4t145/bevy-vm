@@ -82,7 +82,7 @@ impl VmPlugin for CursorPlugin {
     }
 
     fn build_app(&self, app: &mut App) {
-        use crate::render::VmEventAppExt;
+        use crate::vm::VmEventAppExt;
         app.add_vm_event_out::<CursorGrabRequest>(CURSOR_GRAB)
             .add_vm_event_out::<CursorReleaseRequest>(CURSOR_RELEASE)
             .add_systems(Update, apply_cursor_state);
