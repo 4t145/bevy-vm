@@ -7,7 +7,7 @@
 //! - plugin 内短名解析（自家组件 + fallback 全局）
 //! - 共享 helper.rhai 通过 import 复用
 
-use bevy_vm::VmWorld;
+use bevy_vm::VmInstance;
 use std::path::PathBuf;
 
 fn smoke_dir() -> PathBuf {
@@ -16,10 +16,11 @@ fn smoke_dir() -> PathBuf {
 
 #[test]
 fn folder_entry_loads_world_ron_with_plugins() {
-    let mut vm = VmWorld::load(smoke_dir()).expect("load folder via world.ron");
+    let mut world = bevy_ecs::world::World::new();
+    let mut vm = VmInstance::load(&mut world, smoke_dir()).expect("load folder via world.ron");
 
     // 根 world 在 entities 段挂了一个 tiles::Tile，确认它被 spawn。
-    let tiles_before_tick = vm.query("tiles::Tile");
+    let tiles_before_tick = vm.query(&mut world, "tiles::Tile");
     assert_eq!(
         tiles_before_tick.len(),
         1,
@@ -28,17 +29,17 @@ fn folder_entry_loads_world_ron_with_plugins() {
 
     // 跑一个 tick：hud.rhai 应执行——spawn 一个 marker 实体（带 hud::HudKind +
     // tiles::Tile），并把 root 那个 tile 的 value 加 1。
-    vm.tick().expect("tick");
+    vm.tick(&mut world).expect("tick");
 
     // 现在 tiles::Tile 应该有 2 个：root spawn 的 + hud 脚本 spawn 的 marker
-    let tiles_after = vm.query("tiles::Tile");
+    let tiles_after = vm.query(&mut world, "tiles::Tile");
     assert_eq!(tiles_after.len(), 2);
 
     // marker 实体的 HudKind.kind 应该是 "report"
-    let hud_entities = vm.query("hud::HudKind");
+    let hud_entities = vm.query(&mut world, "hud::HudKind");
     assert_eq!(hud_entities.len(), 1, "marker entity tagged with HudKind");
     let kind = vm
-        .get(hud_entities[0], "hud::HudKind", "kind")
+        .get(&world, hud_entities[0], "hud::HudKind", "kind")
         .expect("get HudKind.kind")
         .as_str()
         .unwrap_or("")
@@ -47,7 +48,7 @@ fn folder_entry_loads_world_ron_with_plugins() {
 
     // marker 的 tiles::Tile.value 应该是 1（脚本写入）
     let marker_value = vm
-        .get(hud_entities[0], "tiles::Tile", "value")
+        .get(&world, hud_entities[0], "tiles::Tile", "value")
         .expect("get marker value")
         .as_i64()
         .expect("i64");
@@ -60,7 +61,7 @@ fn folder_entry_loads_world_ron_with_plugins() {
         .find(|t| *t != hud_entities[0])
         .unwrap();
     let root_value = vm
-        .get(root_tile, "tiles::Tile", "value")
+        .get(&world, root_tile, "tiles::Tile", "value")
         .unwrap()
         .as_i64()
         .unwrap();
@@ -83,7 +84,7 @@ fn missing_dependency_reports_error() {
     )
     .unwrap();
 
-    let result = VmWorld::load(&dir);
+    let result = { let mut world = bevy_ecs::world::World::new(); VmInstance::load(&mut world, &dir) };
     let Err(err) = result else {
         panic!("missing dependency should fail");
     };
@@ -113,7 +114,7 @@ fn dependency_cycle_reports_error() {
     std::fs::write(dir.join("a.ron"), r#"(dependencies: ["b"], entities: [])"#).unwrap();
     std::fs::write(dir.join("b.ron"), r#"(dependencies: ["a"], entities: [])"#).unwrap();
 
-    let result = VmWorld::load(&dir);
+    let result = { let mut world = bevy_ecs::world::World::new(); VmInstance::load(&mut world, &dir) };
     let Err(err) = result else {
         panic!("cycle should fail");
     };

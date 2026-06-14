@@ -47,6 +47,8 @@ const MAX_EXPR_DEPTH: usize = 128;
 /// 累赘（init_board 这种把数组/对象字面量塞进函数的写法很常见）。
 const MAX_FUNCTION_EXPR_DEPTH: usize = 128;
 
+use crate::vm_id::{VmId, VmTag};
+
 /// 实体在脚本侧的表示：实体位编码后的整数。
 type ScriptEntity = i64;
 
@@ -77,6 +79,9 @@ pub struct ScriptSystem {
     /// body 之前 eval 全部，全 true 才跑。仿 Bevy `add_systems(...).run_if(...)`。
     run_if: Vec<AST>,
     slots: Rc<Slots>,
+    /// VM 实例 id——host 函数 query/spawn 用它给 entity 加 VmTag、给 query
+    /// 加 VmTag 过滤。
+    vm_id: VmId,
 }
 
 impl ScriptSystem {
@@ -98,6 +103,7 @@ impl ScriptSystem {
         components: Rc<ComponentRegistry>,
         events: Rc<EventRegistry>,
         run_if_exprs: &[String],
+        vm_id: VmId,
     ) -> Result<Self, VmError> {
         let mut engine = Engine::new();
         engine.set_max_operations(MAX_OPERATIONS);
@@ -113,11 +119,14 @@ impl ScriptSystem {
         ));
 
         let slots: Rc<Slots> = Rc::new(Slots::default());
-        register_world_functions(&mut engine, &slots, &components, &plugin_name);
+        register_world_functions(&mut engine, &slots, &components, &plugin_name, vm_id);
         register_event_functions(&mut engine, &slots, &events, &plugin_name);
         register_random(&mut engine, &slots);
         register_time(&mut engine, &slots);
         register_logging(&mut engine);
+        register_ui_helpers(&mut engine);
+        #[cfg(feature = "bevy-bridge")]
+        render_host::register_render_attach(&mut engine, &slots, vm_id);
 
         let ast = engine
             .compile(script)
@@ -136,7 +145,14 @@ impl ScriptSystem {
             ast,
             run_if,
             slots,
+            vm_id,
         })
+    }
+
+    /// VmId this script was compiled against.
+    #[must_use]
+    pub fn vm_id(&self) -> VmId {
+        self.vm_id
     }
 }
 
@@ -216,10 +232,11 @@ fn register_world_functions(
     slots: &Rc<Slots>,
     registry: &Rc<ComponentRegistry>,
     plugin_name: &Rc<str>,
+    vm_id: VmId,
 ) {
-    register_query(engine, slots, registry, plugin_name);
+    register_query(engine, slots, registry, plugin_name, vm_id);
     register_value_access(engine, slots, registry, plugin_name);
-    register_lifecycle(engine, slots);
+    register_lifecycle(engine, slots, vm_id);
 }
 
 /// 注册 `query(component) -> [entity]` 和 `has_component(entity, name)`。
@@ -228,6 +245,7 @@ fn register_query(
     slots: &Rc<Slots>,
     registry: &Rc<ComponentRegistry>,
     plugin_name: &Rc<str>,
+    vm_id: VmId,
 ) {
     let slots_q = Rc::clone(slots);
     let reg_q = Rc::clone(registry);
@@ -237,7 +255,7 @@ fn register_query(
             return Vec::new();
         };
         let resolved = resolve_component_name(&plug_q, component, |n| reg_q.resolve(n).is_some());
-        world_access::query_with_component(world, &reg_q, &resolved)
+        world_access::query_with_component_tagged(world, &reg_q, &resolved, vm_id)
             .into_iter()
             .map(|entity| Dynamic::from(encode_entity(entity)))
             .collect()
@@ -326,13 +344,15 @@ fn register_value_access(
 }
 
 /// 注册实体生命周期：`spawn_entity() -> id`、`despawn(id) -> bool`、`is_alive(id) -> bool`。
-fn register_lifecycle(engine: &mut Engine, slots: &Rc<Slots>) {
+fn register_lifecycle(engine: &mut Engine, slots: &Rc<Slots>, vm_id: VmId) {
     let slots_spawn = Rc::clone(slots);
     engine.register_fn(
         "spawn_entity",
         move || -> Result<ScriptEntity, Box<rhai::EvalAltResult>> {
             let world = world_mut(&slots_spawn)?;
-            Ok(encode_entity(world_access::spawn(world)))
+            let entity = world_access::spawn(world);
+            world.entity_mut(entity).insert(VmTag::new(vm_id));
+            Ok(encode_entity(entity))
         },
     );
 
@@ -574,8 +594,8 @@ fn register_time(engine: &mut Engine, slots: &Rc<Slots>) {
             .unwrap_or(0.0))
     });
 
-    // pause/resume/is_paused：仿 Bevy `Time<Virtual>::pause()`——脚本控制
-    // VM 全局暂停。暂停期间所有依赖 delta() 的逻辑自然冻结。
+    // pause/resume/is_paused：通过 VmPauseState 资源（VmInstance::tick 期间
+    // 临时挂上）通讯。tick 末由 VmInstance 把状态读回 self.paused。
     let slots_p = Rc::clone(slots);
     engine.register_fn("pause", move || -> Result<(), Box<rhai::EvalAltResult>> {
         let world = world_mut(&slots_p)?;
@@ -605,6 +625,666 @@ fn register_time(engine: &mut Engine, slots: &Rc<Slots>) {
                 .unwrap_or(false))
         },
     );
+}
+
+/// 注册 UI / 颜色构造 helper（脚本端常用 dict 构造器）。
+fn register_ui_helpers(engine: &mut Engine) {
+    use rhai::FLOAT;
+    use rhai::Map;
+
+    fn key(s: &str) -> rhai::ImmutableString {
+        rhai::ImmutableString::from(s)
+    }
+
+    fn wrap(variant: &str, value: Dynamic) -> Map {
+        let mut m: Map = Map::new();
+        m.insert(key(variant).into(), value);
+        m
+    }
+
+    engine.register_fn("srgba", move |r: FLOAT, g: FLOAT, b: FLOAT, a: FLOAT| {
+        let mut inner: Map = Map::new();
+        inner.insert(key("red").into(), Dynamic::from_float(r));
+        inner.insert(key("green").into(), Dynamic::from_float(g));
+        inner.insert(key("blue").into(), Dynamic::from_float(b));
+        inner.insert(key("alpha").into(), Dynamic::from_float(a));
+        wrap("Srgba", Dynamic::from(inner))
+    });
+    engine.register_fn("srgb", move |r: FLOAT, g: FLOAT, b: FLOAT| {
+        let mut inner: Map = Map::new();
+        inner.insert(key("red").into(), Dynamic::from_float(r));
+        inner.insert(key("green").into(), Dynamic::from_float(g));
+        inner.insert(key("blue").into(), Dynamic::from_float(b));
+        inner.insert(key("alpha").into(), Dynamic::from_float(1.0));
+        wrap("Srgba", Dynamic::from(inner))
+    });
+    engine.register_fn("px", move |v: FLOAT| {
+        wrap("Px", Dynamic::from_float(v))
+    });
+    engine.register_fn("percent", move |v: FLOAT| {
+        wrap("Percent", Dynamic::from_float(v))
+    });
+}
+
+/// Bevy-bridge-only host functions: `attach_mesh / attach_pbr / attach_sprite
+/// / attach_camera_3d / attach_camera_2d / attach_text / attach_scene
+/// / set_transform / set_translation`。直接在主 World 操作 Bevy 原生组件。
+#[cfg(feature = "bevy-bridge")]
+mod render_host {
+    use super::{
+        VmId, VmTag, decode_entity, error_to_rhai, into_rhai_error, world_mut, with_world_mut,
+        Slots,
+    };
+    use bevy::asset::{AssetServer, Assets, Handle};
+    use bevy::color::Color;
+    use bevy::math::{Vec2, Vec3};
+    use bevy::prelude::{
+        Camera, Camera2d, Camera3d, ClearColorConfig, Mesh, Mesh3d, MeshMaterial3d,
+        OrthographicProjection, PerspectiveProjection, Projection, Quat, Sprite, StandardMaterial,
+        Transform,
+    };
+    use bevy::scene::{Scene, SceneRoot};
+    use bevy::sprite::Text2d;
+    use bevy::text::{TextColor, TextFont};
+    use bevy_ecs::resource::Resource;
+    use rhai::{Dynamic, Engine, FLOAT, Map};
+    use std::rc::Rc;
+
+    /// 资源 handle 缓存——按 cache key 复用同一个 Bevy `Handle`。同 VM 多次
+    /// 调用同样参数的 `cuboid(1,2,3)` 共享同一个 Mesh asset。
+    #[derive(Resource, Default)]
+    pub struct AttachCache {
+        meshes: std::collections::HashMap<String, Handle<Mesh>>,
+        materials: std::collections::HashMap<String, Handle<StandardMaterial>>,
+    }
+
+    impl AttachCache {
+        /// 返回内部 mesh map（render plugin 切换 world 时清场用）。
+        #[must_use]
+        pub fn is_empty(&self) -> bool {
+            self.meshes.is_empty() && self.materials.is_empty()
+        }
+    }
+
+    /// Decode a `Map` value into a Bevy `Color` via reflect-style enum form
+    /// `#{Srgba: #{red,green,blue,alpha}}`. Falls back to white on shape mismatch.
+    fn color_from_dynamic(value: Dynamic) -> Color {
+        let Some(map) = try_into_map(value) else {
+            return Color::WHITE;
+        };
+        for (variant, payload) in map {
+            let Some(inner) = try_into_map(payload) else {
+                continue;
+            };
+            let r = float_field(&inner, "red");
+            let g = float_field(&inner, "green");
+            let b = float_field(&inner, "blue");
+            let a = float_field(&inner, "alpha").unwrap_or(1.0);
+            let r = r.unwrap_or(1.0);
+            let g = g.unwrap_or(1.0);
+            let b = b.unwrap_or(1.0);
+            return match variant.as_str() {
+                "Srgba" => Color::srgba(r, g, b, a),
+                "LinearRgba" => Color::linear_rgba(r, g, b, a),
+                _ => Color::srgba(r, g, b, a),
+            };
+        }
+        Color::WHITE
+    }
+
+    fn float_field(map: &Map, name: &str) -> Option<f32> {
+        map.get(name).and_then(|v| {
+            if let Ok(f) = v.as_float() {
+                Some(f as f32)
+            } else if let Ok(i) = v.as_int() {
+                Some(i as f32)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn vec3_field(map: &Map, name: &str) -> Option<Vec3> {
+        let value = map.get(name)?.clone();
+        if let Some(arr) = try_into_array(value.clone()) {
+            if arr.len() == 3 {
+                let x = arr[0].as_float().ok().map(|f| f as f32).or_else(|| arr[0].as_int().ok().map(|i| i as f32))?;
+                let y = arr[1].as_float().ok().map(|f| f as f32).or_else(|| arr[1].as_int().ok().map(|i| i as f32))?;
+                let z = arr[2].as_float().ok().map(|f| f as f32).or_else(|| arr[2].as_int().ok().map(|i| i as f32))?;
+                return Some(Vec3::new(x, y, z));
+            }
+        }
+        if let Some(inner) = try_into_map(value) {
+            let x = float_field(&inner, "x")?;
+            let y = float_field(&inner, "y")?;
+            let z = float_field(&inner, "z")?;
+            return Some(Vec3::new(x, y, z));
+        }
+        None
+    }
+
+    fn try_into_map(value: Dynamic) -> Option<Map> {
+        if value.is::<Map>() {
+            value.try_cast::<Map>()
+        } else {
+            None
+        }
+    }
+
+    fn try_into_array(value: Dynamic) -> Option<rhai::Array> {
+        if value.is::<rhai::Array>() {
+            value.try_cast::<rhai::Array>()
+        } else {
+            None
+        }
+    }
+
+    fn ensure_cache(world: &mut bevy_ecs::world::World) -> &mut AttachCache {
+        if !world.contains_resource::<AttachCache>() {
+            world.insert_resource(AttachCache::default());
+        }
+        world.resource_mut::<AttachCache>().into_inner()
+    }
+
+    fn ensure_tagged(
+        world: &mut bevy_ecs::world::World,
+        entity: bevy_ecs::entity::Entity,
+        vm_id: VmId,
+    ) -> Result<(), Box<rhai::EvalAltResult>> {
+        let mut em = world
+            .get_entity_mut(entity)
+            .map_err(|_| into_rhai_error(format!("entity {entity:?} does not exist")))?;
+        em.insert(VmTag::new(vm_id));
+        Ok(())
+    }
+
+    pub fn register_render_attach(engine: &mut Engine, slots: &Rc<Slots>, vm_id: VmId) {
+        // ---- attach_mesh(entity, spec) ----------------------------------
+        // spec 形如 #{Cuboid: [w,h,d]} / #{Sphere: r} / #{Cylinder: [r,h]}
+        // / #{Plane: [w,h]} / #{Tetrahedron: edge}。
+        let slots_m = Rc::clone(slots);
+        engine.register_fn(
+            "attach_mesh",
+            move |entity: i64, spec: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_m)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let handle = build_mesh_handle(world, &spec)?;
+                world.entity_mut(entity).insert(Mesh3d(handle));
+                Ok(())
+            },
+        );
+
+        // ---- attach_pbr(entity, material_dict) --------------------------
+        // material_dict 形如 #{base_color: srgba(...), metallic: 0.0, roughness: 0.5,
+        //                     emissive: srgba(...), alpha_mode: "Opaque" / "Blend"}
+        let slots_pbr = Rc::clone(slots);
+        engine.register_fn(
+            "attach_pbr",
+            move |entity: i64, material: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_pbr)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let handle = build_pbr_handle(world, material)?;
+                world.entity_mut(entity).insert(MeshMaterial3d(handle));
+                Ok(())
+            },
+        );
+
+        // ---- attach_sprite(entity, dict) --------------------------------
+        // dict 形如 #{color: srgba(...), custom_size: [w,h], image: "path"}
+        let slots_sp = Rc::clone(slots);
+        engine.register_fn(
+            "attach_sprite",
+            move |entity: i64, spec: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_sp)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let sprite = build_sprite(world, spec);
+                world.entity_mut(entity).insert(sprite);
+                Ok(())
+            },
+        );
+
+        // ---- attach_camera_3d(entity, opts) -----------------------------
+        // opts 形如 #{projection: "perspective" / "orthographic",
+        //            fov_degrees: 60, near: 0.1, far: 1000.0,
+        //            target: [x,y,z], up: [0,1,0], order: 0,
+        //            clear_color: srgba(...), active: true}
+        let slots_c3 = Rc::clone(slots);
+        engine.register_fn(
+            "attach_camera_3d",
+            move |entity: i64, opts: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_c3)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let (camera, projection, transform) = build_camera_3d(opts);
+                world
+                    .entity_mut(entity)
+                    .insert((Camera3d::default(), camera, projection, transform));
+                Ok(())
+            },
+        );
+
+        // ---- attach_camera_2d(entity, opts) -----------------------------
+        let slots_c2 = Rc::clone(slots);
+        engine.register_fn(
+            "attach_camera_2d",
+            move |entity: i64, opts: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_c2)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let (camera, projection, transform) = build_camera_2d(opts);
+                world
+                    .entity_mut(entity)
+                    .insert((Camera2d, camera, projection, transform));
+                Ok(())
+            },
+        );
+
+        // ---- attach_text(entity, content, font_size, color) -------------
+        let slots_t = Rc::clone(slots);
+        engine.register_fn(
+            "attach_text",
+            move |entity: i64,
+                  content: &str,
+                  font_size: FLOAT,
+                  color: Dynamic|
+                  -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_t)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                world.entity_mut(entity).insert((
+                    Text2d::new(content.to_owned()),
+                    TextFont {
+                        font_size: font_size as f32,
+                        ..Default::default()
+                    },
+                    TextColor(color_from_dynamic(color)),
+                ));
+                Ok(())
+            },
+        );
+
+        // ---- attach_scene(entity, asset_path) ---------------------------
+        let slots_sc = Rc::clone(slots);
+        engine.register_fn(
+            "attach_scene",
+            move |entity: i64, asset_path: &str| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_sc)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let server = world
+                    .get_resource::<AssetServer>()
+                    .ok_or_else(|| into_rhai_error("AssetServer missing".to_owned()))?;
+                let handle: Handle<Scene> = server.load(asset_path.to_owned());
+                world.entity_mut(entity).insert(SceneRoot(handle));
+                Ok(())
+            },
+        );
+
+        // ---- set_transform(entity, translation, euler_xyz_deg, scale) ---
+        let slots_tr = Rc::clone(slots);
+        engine.register_fn(
+            "set_transform",
+            move |entity: i64,
+                  translation: Dynamic,
+                  euler_deg: Dynamic,
+                  scale: Dynamic|
+                  -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_tr)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let translation = vec3_from(translation).unwrap_or(Vec3::ZERO);
+                let euler = vec3_from(euler_deg).unwrap_or(Vec3::ZERO);
+                let scale = vec3_from(scale).unwrap_or(Vec3::ONE);
+                let rotation = Quat::from_euler(
+                    bevy::math::EulerRot::YXZ,
+                    euler.y.to_radians(),
+                    euler.x.to_radians(),
+                    euler.z.to_radians(),
+                );
+                world.entity_mut(entity).insert(Transform {
+                    translation,
+                    rotation,
+                    scale,
+                });
+                Ok(())
+            },
+        );
+
+        // ---- set_translation(entity, [x,y,z]) ---------------------------
+        let slots_st = Rc::clone(slots);
+        engine.register_fn(
+            "set_translation",
+            move |entity: i64, translation: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_st)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let translation = vec3_from(translation).unwrap_or(Vec3::ZERO);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut t) = em.get_mut::<Transform>() {
+                    t.translation = translation;
+                } else {
+                    em.insert(Transform::from_translation(translation));
+                }
+                Ok(())
+            },
+        );
+
+        // ---- get_translation(entity) -> [x,y,z] -------------------------
+        let slots_gt = Rc::clone(slots);
+        engine.register_fn(
+            "get_translation",
+            move |entity: i64| -> Result<rhai::Array, Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_gt)?;
+                let entity = decode_entity(entity);
+                let t = world
+                    .get_entity(entity)
+                    .ok()
+                    .and_then(|e| e.get::<Transform>().copied())
+                    .unwrap_or_default();
+                Ok(vec![
+                    Dynamic::from_float(t.translation.x as FLOAT),
+                    Dynamic::from_float(t.translation.y as FLOAT),
+                    Dynamic::from_float(t.translation.z as FLOAT),
+                ])
+            },
+        );
+
+        // ---- set_yaw(entity, radians) — 设置仅绕 Y 轴的旋转 -------------
+        let slots_sy = Rc::clone(slots);
+        engine.register_fn(
+            "set_yaw",
+            move |entity: i64, yaw_rad: FLOAT| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_sy)?;
+                let entity = decode_entity(entity);
+                let rotation = Quat::from_rotation_y(yaw_rad as f32);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut t) = em.get_mut::<Transform>() {
+                    t.rotation = rotation;
+                } else {
+                    em.insert(Transform::from_rotation(rotation));
+                }
+                Ok(())
+            },
+        );
+    }
+
+    fn build_mesh_handle(
+        world: &mut bevy_ecs::world::World,
+        spec: &Dynamic,
+    ) -> Result<Handle<Mesh>, Box<rhai::EvalAltResult>> {
+        let map = try_into_map(spec.clone())
+            .ok_or_else(|| into_rhai_error("attach_mesh: spec must be a #{...} map".to_owned()))?;
+        let (variant, payload) = map
+            .into_iter()
+            .next()
+            .ok_or_else(|| into_rhai_error("attach_mesh: empty spec".to_owned()))?;
+        let cache_key = format!("{}:{:?}", variant, payload);
+        if let Some(handle) = world.resource::<AttachCache>().meshes.get(&cache_key) {
+            return Ok(handle.clone());
+        }
+        let mesh = match variant.as_str() {
+            "Cuboid" | "Cube" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let w = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                let d = arr.get(2).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                bevy::prelude::Mesh::from(bevy::math::primitives::Cuboid::new(w, h, d))
+            }
+            "Sphere" => {
+                let r = if let Ok(f) = payload.as_float() {
+                    f as f32
+                } else if let Some(m) = try_into_map(payload.clone()) {
+                    float_field(&m, "radius").unwrap_or(0.5)
+                } else {
+                    0.5
+                };
+                bevy::prelude::Mesh::from(bevy::math::primitives::Sphere::new(r))
+            }
+            "Cylinder" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let r = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(0.5) as f32;
+                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                bevy::prelude::Mesh::from(bevy::math::primitives::Cylinder::new(r, h))
+            }
+            "Capsule" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let r = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(0.5) as f32;
+                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                bevy::prelude::Mesh::from(bevy::math::primitives::Capsule3d::new(r, h))
+            }
+            "Plane" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let w = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(10.0) as f32;
+                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(10.0) as f32;
+                bevy::prelude::Mesh::from(bevy::math::primitives::Rectangle::new(w, h))
+            }
+            "Tetrahedron" => {
+                let edge = if let Ok(f) = payload.as_float() {
+                    f as f32
+                } else {
+                    1.0
+                };
+                bevy::prelude::Mesh::from(bevy::math::primitives::Tetrahedron::default()).scaled_by(Vec3::splat(edge))
+            }
+            other => {
+                return Err(into_rhai_error(format!(
+                    "attach_mesh: unknown primitive `{other}`"
+                )));
+            }
+        };
+        let handle = {
+            let mut meshes = world.resource_mut::<Assets<Mesh>>();
+            meshes.add(mesh)
+        };
+        world
+            .resource_mut::<AttachCache>()
+            .meshes
+            .insert(cache_key, handle.clone());
+        Ok(handle)
+    }
+
+    fn build_pbr_handle(
+        world: &mut bevy_ecs::world::World,
+        material: Dynamic,
+    ) -> Result<Handle<StandardMaterial>, Box<rhai::EvalAltResult>> {
+        let map = try_into_map(material).unwrap_or_default();
+        let mut mat = StandardMaterial::default();
+        if let Some(color) = map.get("base_color") {
+            mat.base_color = color_from_dynamic(color.clone());
+        }
+        if let Some(v) = float_field(&map, "metallic") {
+            mat.metallic = v;
+        }
+        if let Some(v) = float_field(&map, "roughness") {
+            mat.perceptual_roughness = v;
+        }
+        if let Some(emissive) = map.get("emissive") {
+            mat.emissive = color_from_dynamic(emissive.clone()).into();
+        }
+        let handle = {
+            let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+            materials.add(mat)
+        };
+        Ok(handle)
+    }
+
+    fn build_sprite(world: &mut bevy_ecs::world::World, spec: Dynamic) -> Sprite {
+        let map = try_into_map(spec).unwrap_or_default();
+        let color = map
+            .get("color")
+            .map(|c| color_from_dynamic(c.clone()))
+            .unwrap_or(Color::WHITE);
+        let custom_size = map
+            .get("custom_size")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let w = a.first().and_then(|v| v.as_float().ok())? as f32;
+                let h = a.get(1).and_then(|v| v.as_float().ok())? as f32;
+                Some(Vec2::new(w, h))
+            });
+        let image = map.get("image").and_then(|v| v.clone().into_string().ok());
+        let mut sprite = if let Some(path) = image {
+            let server = world.resource::<AssetServer>();
+            Sprite {
+                image: server.load(path),
+                color,
+                ..Default::default()
+            }
+        } else {
+            Sprite::from_color(color, custom_size.unwrap_or(Vec2::ONE))
+        };
+        if let Some(size) = custom_size {
+            sprite.custom_size = Some(size);
+        }
+        sprite
+    }
+
+    fn build_camera_3d(opts: Dynamic) -> (Camera, Projection, Transform) {
+        let map = try_into_map(opts).unwrap_or_default();
+        let proj_kind = map
+            .get("projection")
+            .and_then(|v| v.clone().into_string().ok())
+            .unwrap_or_else(|| "perspective".to_owned());
+        let projection = if proj_kind == "orthographic" {
+            let mut p = OrthographicProjection::default_3d();
+            if let Some(s) = float_field(&map, "scale") {
+                p.scale = s;
+            }
+            if let Some(n) = float_field(&map, "near") {
+                p.near = n;
+            }
+            if let Some(f) = float_field(&map, "far") {
+                p.far = f;
+            }
+            if let Some(h) = float_field(&map, "viewport_height") {
+                p.scaling_mode = bevy::camera::ScalingMode::FixedVertical {
+                    viewport_height: h,
+                };
+            }
+            Projection::Orthographic(p)
+        } else {
+            let fov = float_field(&map, "fov_degrees").unwrap_or(60.0);
+            let near = float_field(&map, "near").unwrap_or(0.1);
+            let far = float_field(&map, "far").unwrap_or(1000.0);
+            Projection::Perspective(PerspectiveProjection {
+                fov: fov.to_radians(),
+                near,
+                far,
+                ..Default::default()
+            })
+        };
+
+        let target = map
+            .get("target")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let x = a.first().and_then(|v| v.as_float().ok())? as f32;
+                let y = a.get(1).and_then(|v| v.as_float().ok())? as f32;
+                let z = a.get(2).and_then(|v| v.as_float().ok())? as f32;
+                Some(Vec3::new(x, y, z))
+            });
+        let position = map
+            .get("position")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let x = a.first().and_then(|v| v.as_float().ok())? as f32;
+                let y = a.get(1).and_then(|v| v.as_float().ok())? as f32;
+                let z = a.get(2).and_then(|v| v.as_float().ok())? as f32;
+                Some(Vec3::new(x, y, z))
+            });
+        let up = map
+            .get("up")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let x = a.first().and_then(|v| v.as_float().ok())? as f32;
+                let y = a.get(1).and_then(|v| v.as_float().ok())? as f32;
+                let z = a.get(2).and_then(|v| v.as_float().ok())? as f32;
+                Some(Vec3::new(x, y, z))
+            })
+            .unwrap_or(Vec3::Y);
+        let transform = if let (Some(eye), Some(tgt)) = (position, target) {
+            Transform::from_translation(eye).looking_at(tgt, up)
+        } else {
+            Transform::default()
+        };
+
+        let order = map
+            .get("order")
+            .and_then(|v| v.as_int().ok())
+            .map(|i| isize::from(i16::try_from(i).unwrap_or(0)))
+            .unwrap_or(0);
+        let active = map
+            .get("active")
+            .and_then(|v| v.as_bool().ok())
+            .unwrap_or(true);
+        let clear = map
+            .get("clear_color")
+            .map(|c| ClearColorConfig::Custom(color_from_dynamic(c.clone())))
+            .unwrap_or(ClearColorConfig::Default);
+        let camera = Camera {
+            order,
+            is_active: active,
+            clear_color: clear,
+            ..Default::default()
+        };
+        (camera, projection, transform)
+    }
+
+    fn build_camera_2d(opts: Dynamic) -> (Camera, Projection, Transform) {
+        let map = try_into_map(opts).unwrap_or_default();
+        let mut p = OrthographicProjection::default_2d();
+        if let Some(s) = float_field(&map, "scale") {
+            p.scale = s;
+        }
+        let projection = Projection::Orthographic(p);
+        let transform = Transform::default();
+        let order = map
+            .get("order")
+            .and_then(|v| v.as_int().ok())
+            .map(|i| isize::from(i16::try_from(i).unwrap_or(0)))
+            .unwrap_or(0);
+        let active = map
+            .get("active")
+            .and_then(|v| v.as_bool().ok())
+            .unwrap_or(true);
+        let clear = map
+            .get("clear_color")
+            .map(|c| ClearColorConfig::Custom(color_from_dynamic(c.clone())))
+            .unwrap_or(ClearColorConfig::Default);
+        let camera = Camera {
+            order,
+            is_active: active,
+            clear_color: clear,
+            ..Default::default()
+        };
+        (camera, projection, transform)
+    }
+
+    fn vec3_from(value: Dynamic) -> Option<Vec3> {
+        if let Some(arr) = try_into_array(value.clone()) {
+            if arr.len() == 3 {
+                let x = arr[0].as_float().ok().map(|f| f as f32).or_else(|| arr[0].as_int().ok().map(|i| i as f32))?;
+                let y = arr[1].as_float().ok().map(|f| f as f32).or_else(|| arr[1].as_int().ok().map(|i| i as f32))?;
+                let z = arr[2].as_float().ok().map(|f| f as f32).or_else(|| arr[2].as_int().ok().map(|i| i as f32))?;
+                return Some(Vec3::new(x, y, z));
+            }
+        }
+        if let Some(map) = try_into_map(value) {
+            let x = float_field(&map, "x")?;
+            let y = float_field(&map, "y")?;
+            let z = float_field(&map, "z")?;
+            return Some(Vec3::new(x, y, z));
+        }
+        None
+    }
+
 }
 
 /// 注册 `log(msg)` 宿主：把脚本的诊断输出转发到 `tracing::info`，便于在

@@ -8,7 +8,7 @@
 
 use bevy::ui::widget::{Button, Text};
 use bevy::ui::{Node, UiRect, Val};
-use bevy_vm::VmWorld;
+use bevy_vm::VmInstance;
 use std::path::PathBuf;
 
 fn world_path(name: &str) -> PathBuf {
@@ -19,9 +19,10 @@ fn world_path(name: &str) -> PathBuf {
 
 #[test]
 fn ui_node_can_attach_as_component_in_vm_world() {
+    let mut world = bevy_ecs::world::World::new();
     // 任意已有的最小配置即可——我们要的只是 ComponentRegistry 已 with_builtins 过。
-    let mut vm = VmWorld::load(world_path("movement.ron")).expect("load");
-    let world = vm.world_mut();
+    let mut vm = VmInstance::load(&mut world, world_path("movement.ron")).expect("load");
+    let world = &mut world;
 
     let entity = world.spawn_empty().id();
     world.entity_mut(entity).insert(Node {
@@ -37,8 +38,9 @@ fn ui_node_can_attach_as_component_in_vm_world() {
 
 #[test]
 fn button_marker_works_as_component() {
-    let mut vm = VmWorld::load(world_path("movement.ron")).expect("load");
-    let world = vm.world_mut();
+    let mut world = bevy_ecs::world::World::new();
+    let mut vm = VmInstance::load(&mut world, world_path("movement.ron")).expect("load");
+    let world = &mut world;
 
     let e = world.spawn((Node::default(), Button)).id();
     assert!(world.entity(e).get::<Button>().is_some());
@@ -47,8 +49,9 @@ fn button_marker_works_as_component() {
 
 #[test]
 fn text_widget_components_co_exist() {
-    let mut vm = VmWorld::load(world_path("movement.ron")).expect("load");
-    let world = vm.world_mut();
+    let mut world = bevy_ecs::world::World::new();
+    let mut vm = VmInstance::load(&mut world, world_path("movement.ron")).expect("load");
+    let world = &mut world;
 
     let e = world.spawn(Text::new("hello")).id();
     // Text 的 #[require(...)] 自动挂上 TextLayout/TextFont/TextColor 等
@@ -66,11 +69,12 @@ fn set_node_via_world_access_reflect_path() {
     use bevy_vm::world_access;
 
     let path = world_path("movement.ron");
-    let mut vm = VmWorld::load(&path).expect("load");
+    let mut world = bevy_ecs::world::World::new();
+    let mut vm = VmInstance::load(&mut world, &path).expect("load");
 
     // ComponentRegistry::with_builtins 已注册 Node。脚本入口走的就是这条路。
     let registry = vm.components();
-    let world = vm.world_mut();
+    let world = &mut world;
     let entity = world.spawn_empty().id();
 
     // 用脚本风格的写法：set Node.width 为 Px(200.0)。

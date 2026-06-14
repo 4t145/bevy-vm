@@ -23,7 +23,7 @@
 //! release. Pause menus toggle. Putting it on the script side keeps the
 //! library opinion-free — the harness just obeys.
 
-use crate::VmWorldBuilder;
+use crate::VmInstanceBuilder;
 use crate::error::VmError;
 use crate::plugin::VmPlugin;
 use bevy::app::{App, Update};
@@ -64,10 +64,10 @@ pub struct CursorReleaseRequest {
 /// Add the **same instance** on both sides:
 ///
 /// ```ignore
-/// use bevy_vm::{VmWorldBuilder, plugin::{AppVmPluginExt, BuilderVmPluginExt, cursor::CursorPlugin}};
+/// use bevy_vm::{VmInstanceBuilder, plugin::{AppVmPluginExt, BuilderVmPluginExt, cursor::CursorPlugin}};
 /// # use bevy::app::App;
 /// let plugin = CursorPlugin;
-/// let vm = VmWorldBuilder::new().add_plugin(&plugin)?.load("world.ron")?;
+/// let vm = VmInstanceBuilder::new().add_plugin(&plugin)?.load("world.ron")?;
 /// let mut app = App::new();
 /// app.add_vm_plugin(&plugin);
 /// # Ok::<(), bevy_vm::VmError>(())
@@ -75,7 +75,7 @@ pub struct CursorReleaseRequest {
 pub struct CursorPlugin;
 
 impl VmPlugin for CursorPlugin {
-    fn build_vm(&self, builder: VmWorldBuilder) -> Result<VmWorldBuilder, VmError> {
+    fn build_vm(&self, builder: VmInstanceBuilder) -> Result<VmInstanceBuilder, VmError> {
         builder
             .with_event_default::<CursorGrabRequest>(CURSOR_GRAB)?
             .with_event_default::<CursorReleaseRequest>(CURSOR_RELEASE)

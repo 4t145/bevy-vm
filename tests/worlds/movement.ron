@@ -1,11 +1,15 @@
+// 简化版的"动态组件 only"配置——单 World 架构后 Position/Velocity typed
+// 不再内置；要测试动态字段，自己声明 Pos/Vel 即可。
 (
     components: [
+        (name: "Pos", default: (x: 0.0, y: 0.0)),
+        (name: "Vel", default: (x: 0.0, y: 0.0)),
         (name: "Health", default: (value: 100.0)),
     ],
     entities: [
         (components: {
-            "Position": (x: 0.0, y: 0.0),
-            "Velocity": (x: 1.0, y: 2.0),
+            "Pos": (x: 0.0, y: 0.0),
+            "Vel": (x: 1.0, y: 2.0),
             "Health": (value: 10.0),
         }),
     ],

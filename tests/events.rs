@@ -7,7 +7,7 @@
 //! typed 通道（双缓冲，host 在 tick 后稳定 drain）。这里用最简的方式
 //! 验证：直接看 Health 字段就够说明事件链跑通。
 
-use bevy_vm::VmWorldBuilder;
+use bevy_vm::VmInstanceBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -25,13 +25,14 @@ fn world_path(name: &str) -> PathBuf {
 
 #[test]
 fn typed_event_in_dynamic_event_out() {
-    let mut vm = VmWorldBuilder::new()
+    let mut world = bevy_ecs::world::World::new();
+    let mut vm = VmInstanceBuilder::new()
         .with_event::<Hit>("Hit")
         .expect("typed event registers cleanly")
-        .load(world_path("damage.ron"))
+        .load(&mut world, world_path("damage.ron"))
         .expect("world loads");
 
-    let entities = vm.query("Health");
+    let entities = vm.query(&mut world, "Health");
     assert_eq!(entities.len(), 1, "exactly one Health entity in fixture");
     let target = entities[0];
 
@@ -49,12 +50,12 @@ fn typed_event_in_dynamic_event_out() {
     // tick 1: 脚本读 Hit.front=[]（仍在 back），无 mutation。tick 末 swap。
     // tick 2: 脚本读 Hit.front=[Hit] → 减血 + emit Damaged（dynamic，同帧可见）。
     //         tick 末：Hit.swap (front 清空)，Damaged 是 dynamic clear。
-    vm.tick().expect("tick 1");
-    vm.tick().expect("tick 2");
+    vm.tick(&mut world).expect("tick 1");
+    vm.tick(&mut world).expect("tick 2");
 
     // Health 从 50 减到 38——脚本端事件链跑通。
     let hp = vm
-        .get(target, "Health", "value")
+        .get(&world, target, "Health", "value")
         .expect("Health.value readable");
     let number = hp
         .as_f64()

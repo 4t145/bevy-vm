@@ -32,7 +32,7 @@
 //! Bevy side; if a script needs current-frame button state, expose it as
 //! a typed event of your own and forward it from a Bevy system.
 
-use crate::VmWorldBuilder;
+use crate::VmInstanceBuilder;
 use crate::error::VmError;
 use crate::plugin::VmPlugin;
 use crate::render::VmEventAppExt;
@@ -61,22 +61,22 @@ pub const KEYBOARD_FOCUS_LOST: &str = "KeyboardFocusLost";
 /// Add the **same instance** on both sides:
 ///
 /// ```ignore
-/// use bevy_vm::{VmWorldBuilder, plugin::{AppVmPluginExt, BuilderVmPluginExt, input::InputPlugin}};
+/// use bevy_vm::{VmInstanceBuilder, plugin::{AppVmPluginExt, BuilderVmPluginExt, input::InputPlugin}};
 /// # use bevy::app::App;
 /// let plugin = InputPlugin;
-/// let vm = VmWorldBuilder::new().add_plugin(&plugin)?.load("world.ron")?;
+/// let vm = VmInstanceBuilder::new().add_plugin(&plugin)?.load("world.ron")?;
 /// let mut app = App::new();
 /// app.add_vm_plugin(&plugin);
 /// # Ok::<(), bevy_vm::VmError>(())
 /// ```
 ///
 /// Only need a subset? Don't use this plugin: register the events you want
-/// directly with [`VmWorldBuilder::with_event`] and
+/// directly with [`VmInstanceBuilder::with_event`] and
 /// [`crate::render::VmEventAppExt::add_vm_event`].
 pub struct InputPlugin;
 
 impl VmPlugin for InputPlugin {
-    fn build_vm(&self, builder: VmWorldBuilder) -> Result<VmWorldBuilder, VmError> {
+    fn build_vm(&self, builder: VmInstanceBuilder) -> Result<VmInstanceBuilder, VmError> {
         builder
             .with_event::<MouseButtonInput>(MOUSE_BUTTON)?
             .with_event::<MouseMotion>(MOUSE_MOTION)?

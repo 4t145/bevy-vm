@@ -1,13 +1,13 @@
 //! Two-sided plugin abstraction.
 //!
 //! Some extensions need to wire the **same concept** across both halves of
-//! the system: register a typed event channel on the [`VmWorldBuilder`]
+//! the system: register a typed event channel on the [`VmInstanceBuilder`]
 //! **and** install a corresponding pump system on the Bevy [`App`]. The
 //! input event bridge is the canonical example.
 //!
 //! [`VmPlugin`] captures both responsibilities behind one trait, with two
 //! extension entry points:
-//! - [`VmWorldBuilder::add_plugin`](crate::VmWorldBuilder::add_plugin)
+//! - [`VmInstanceBuilder::add_plugin`](crate::VmInstanceBuilder::add_plugin)
 //!   invokes [`VmPlugin::build_vm`] before the world is constructed.
 //! - [`AppVmPluginExt::add_vm_plugin`] (only present under the
 //!   `bevy-bridge` feature) invokes [`VmPlugin::build_app`] when the host
@@ -19,12 +19,12 @@
 //! parameters) by closing over fields on the plugin struct itself.
 //!
 //! ```ignore
-//! use bevy_vm::{VmWorldBuilder, plugin::input::InputPlugin};
+//! use bevy_vm::{VmInstanceBuilder, plugin::input::InputPlugin};
 //! # use bevy::app::App;
 //! # use bevy_vm::plugin::AppVmPluginExt;
 //! let plugin = InputPlugin;
 //!
-//! let vm = VmWorldBuilder::new()
+//! let vm = VmInstanceBuilder::new()
 //!     .add_plugin(&plugin)?
 //!     .load("worlds/example.ron")?;
 //!
@@ -40,7 +40,7 @@ pub mod input;
 #[cfg(feature = "bevy-bridge")]
 pub mod picking;
 
-use crate::VmWorldBuilder;
+use crate::VmInstanceBuilder;
 use crate::error::VmError;
 
 #[cfg(feature = "bevy-bridge")]
@@ -54,15 +54,15 @@ use bevy::app::App;
 pub trait VmPlugin {
     /// Apply this plugin's VM-side configuration to `builder`.
     ///
-    /// Runs once per [`VmWorldBuilder::add_plugin`] call. Typical work:
+    /// Runs once per [`VmInstanceBuilder::add_plugin`] call. Typical work:
     /// register typed event channels via
-    /// [`VmWorldBuilder::with_event`](crate::VmWorldBuilder::with_event).
+    /// [`VmInstanceBuilder::with_event`](crate::VmInstanceBuilder::with_event).
     ///
     /// # Errors
     ///
     /// Returns the underlying [`VmError`] when registration fails — name
     /// clashes are the most common failure.
-    fn build_vm(&self, builder: VmWorldBuilder) -> Result<VmWorldBuilder, VmError>;
+    fn build_vm(&self, builder: VmInstanceBuilder) -> Result<VmInstanceBuilder, VmError>;
 
     /// Apply this plugin's Bevy-side configuration to `app`.
     ///
@@ -80,7 +80,7 @@ pub trait VmPlugin {
     }
 }
 
-/// Extension trait letting [`VmWorldBuilder`] consume a [`VmPlugin`] inline.
+/// Extension trait letting [`VmInstanceBuilder`] consume a [`VmPlugin`] inline.
 pub trait BuilderVmPluginExt: Sized {
     /// Apply the VM-side half of `plugin` to this builder.
     ///
@@ -90,7 +90,7 @@ pub trait BuilderVmPluginExt: Sized {
     fn add_plugin<P: VmPlugin + ?Sized>(self, plugin: &P) -> Result<Self, VmError>;
 }
 
-impl BuilderVmPluginExt for VmWorldBuilder {
+impl BuilderVmPluginExt for VmInstanceBuilder {
     fn add_plugin<P: VmPlugin + ?Sized>(self, plugin: &P) -> Result<Self, VmError> {
         plugin.build_vm(self)
     }

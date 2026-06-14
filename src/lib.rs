@@ -1,11 +1,12 @@
-//! bevy-vm: 让 AI 产出的配置 + 行为规则驱动一个运行时可变的独立世界。
+//! bevy-vm: 让 AI 产出的配置 + 行为规则驱动一个运行时可变的世界——但所有
+//! 实体直接住在主 Bevy `World` 里，没有第二个 World、没有桥接。
 //!
-//! 一个 [`vm::VmWorld`] = 一个完备、独立的交互世界，承载在一个独立的
-//! `bevy_ecs::World` 上。世界之间数据隔离、零共享借用，因此可由上层管理者
-//! 直接分发到任务池并行 tick。
+//! 一个 [`VmInstance`] = 一个独立的脚本调度单元 + 注册表 + 事件存储。它每
+//! tick 接收外部 `&mut World`，把所有 spawn 出来的实体打上 [`VmTag`]，并按
+//! 配置在 plugins 里挂的脚本顺序逐 tick 执行。
 //!
-//! 单个世界内部由一个**独占解释器**串行驱动：它持有 `&mut World`，按配置
-//! spawn 实体、用反射填充组件初值，并逐 tick 执行批量行为规则。
+//! 同一个 `World` 可以同时容纳多个 [`VmInstance`]——它们由 [`VmTag`] 隔离，
+//! 互相看不到对方的实体。`VmRegistry` 容器集中管理活跃实例。
 
 pub mod component;
 pub mod config;
@@ -19,7 +20,9 @@ pub mod render;
 pub mod resource;
 pub mod system;
 pub mod vm;
+pub mod vm_id;
 pub mod world_access;
 
 pub use error::VmError;
-pub use vm::{EntitySnapshot, VmWorld, VmWorldBuilder, WorldSnapshot};
+pub use vm::{VmInstance, VmInstanceBuilder, VmRegistry};
+pub use vm_id::{VmId, VmTag};

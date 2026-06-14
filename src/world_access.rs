@@ -85,6 +85,32 @@ pub fn query_with_component(
     query.iter(world).collect()
 }
 
+/// Query every entity carrying both the named component and the [`crate::VmTag`]
+/// of `vm_id`. Used by scripts to keep multi-VM coexistence safe.
+#[must_use]
+pub fn query_with_component_tagged(
+    world: &mut World,
+    registry: &ComponentRegistry,
+    component: &str,
+    vm_id: crate::VmId,
+) -> Vec<Entity> {
+    let Some(component_id) = component_id(registry, component) else {
+        return Vec::new();
+    };
+    let mut query = QueryBuilder::<Entity>::new(world)
+        .with_id(component_id)
+        .build();
+    let candidates: Vec<Entity> = query.iter(world).collect();
+    candidates
+        .into_iter()
+        .filter(|&entity| {
+            world
+                .get::<crate::VmTag>(entity)
+                .is_some_and(|tag| tag.vm == vm_id)
+        })
+        .collect()
+}
+
 /// Read the value at `path` on `entity`'s `component`.
 ///
 /// # Errors

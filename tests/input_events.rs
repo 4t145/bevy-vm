@@ -8,7 +8,7 @@
 use bevy::ecs::entity::Entity as BevyEntity;
 use bevy::input::ButtonState;
 use bevy::input::mouse::{MouseButton, MouseButtonInput};
-use bevy_vm::VmWorldBuilder;
+use bevy_vm::VmInstanceBuilder;
 use bevy_vm::plugin::BuilderVmPluginExt;
 use bevy_vm::plugin::input::{self, InputPlugin};
 use std::path::PathBuf;
@@ -21,14 +21,15 @@ fn world_path(name: &str) -> PathBuf {
 
 #[test]
 fn typed_mouse_button_event_reaches_script() {
+    let mut world = bevy_ecs::world::World::new();
     let plugin = InputPlugin;
-    let mut vm = VmWorldBuilder::new()
+    let mut vm = VmInstanceBuilder::new()
         .add_plugin(&plugin)
         .expect("input plugin builds the VM side cleanly")
-        .load(world_path("input_counter.ron"))
+        .load(&mut world, world_path("input_counter.ron"))
         .expect("world loads");
 
-    let entities = vm.query("Counter");
+    let entities = vm.query(&mut world, "Counter");
     assert_eq!(entities.len(), 1);
     let counter_entity = entities[0];
 
@@ -49,11 +50,11 @@ fn typed_mouse_button_event_reaches_script() {
     //   tick 1: events sit in MouseButton.back; script's `events("MouseButton")` is empty.
     //           tick-end swap promotes them to front.
     //   tick 2: script reads 3 events, sets Counter.clicks = 0 + 3.
-    vm.tick().expect("tick 1");
-    vm.tick().expect("tick 2");
+    vm.tick(&mut world).expect("tick 1");
+    vm.tick(&mut world).expect("tick 2");
 
     let clicks = vm
-        .get(counter_entity, "Counter", "clicks")
+        .get(&world, counter_entity, "Counter", "clicks")
         .expect("Counter.clicks readable");
     let number = clicks
         .as_f64()

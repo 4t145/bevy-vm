@@ -1,7 +1,8 @@
 //! Cross-format polyfill: the same world spec written in JSON and RON loads
-//! into identical `VmWorld` state.
+//! into identical `VmInstance` state.
 
-use bevy_vm::VmWorld;
+use bevy_ecs::world::World;
+use bevy_vm::VmInstance;
 use std::path::PathBuf;
 
 fn spec_root() -> PathBuf {
@@ -33,11 +34,13 @@ const RON_TEXT: &str = r#"
 #[cfg(feature = "config-json")]
 #[test]
 fn json_text_loads_world() {
-    let mut vm = VmWorld::from_json(JSON_TEXT, spec_root()).expect("JSON config should load");
-    let entities = vm.query("Health");
+    let mut world = World::new();
+    let vm =
+        VmInstance::from_json(&mut world, JSON_TEXT, spec_root()).expect("JSON config should load");
+    let entities = vm.query(&mut world, "Health");
     assert_eq!(entities.len(), 1);
     let value = vm
-        .get(entities[0], "Health", "value")
+        .get(&world, entities[0], "Health", "value")
         .expect("Health.value");
     assert_eq!(value.as_f64(), Some(42.0));
 }
@@ -45,11 +48,13 @@ fn json_text_loads_world() {
 #[cfg(feature = "config-ron")]
 #[test]
 fn ron_text_loads_world() {
-    let mut vm = VmWorld::from_ron(RON_TEXT, spec_root()).expect("RON config should load");
-    let entities = vm.query("Health");
+    let mut world = World::new();
+    let vm =
+        VmInstance::from_ron(&mut world, RON_TEXT, spec_root()).expect("RON config should load");
+    let entities = vm.query(&mut world, "Health");
     assert_eq!(entities.len(), 1);
     let value = vm
-        .get(entities[0], "Health", "value")
+        .get(&world, entities[0], "Health", "value")
         .expect("Health.value");
     assert_eq!(value.as_f64(), Some(42.0));
 }
