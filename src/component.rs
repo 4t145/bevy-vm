@@ -7,18 +7,15 @@
 //! Bevy `Handle<...>` + insert 原生组件。
 //!
 //! 仍然存在的两层：
-//! - **引擎层 typed 组件**：`Pickable`（标记 picking 启用）+ Bevy UI 原生类型
-//!   (`Node`, `BackgroundColor`, ... )。脚本通过 `set(e, "Node", "", #{...})`
-//!   走 reflect 反序列化照常使用。
+//! - **引擎层 typed 组件**：Bevy UI 原生类型（`Node`, `BackgroundColor`,
+//!   `Text`, `TextFont`, ...）。脚本通过 `set(e, "Node", "", #{...})` 走
+//!   reflect 反序列化挂上去；非 UI 的视觉组件（Mesh3d / Camera 等）走
+//!   `attach_*` host fn，不经此注册表。
 //! - **内容层动态组件**（[`dynamic`]）：游戏逻辑层，按名注册，存为 [`ron::Value`]，
 //!   由 AI 在 ron / json 里自由声明。
 
 pub mod dynamic;
-pub mod picking;
 pub mod typed;
-
-#[cfg(test)]
-mod tests;
 
 pub use dynamic::DynComponent;
 pub use typed::TypedComponent;
@@ -102,8 +99,8 @@ pub struct ComponentRegistry {
 impl ComponentRegistry {
     /// Builder used by [`crate::VmInstance`] to construct the per-instance
     /// registry. Pre-loads every Bevy native type the VM may want to expose
-    /// to scripts — currently just [`picking::Pickable`] and the UI types
-    /// under `bevy::ui::*`.
+    /// to scripts — currently the UI types under `bevy::ui::*` plus the
+    /// color enum used by `srgba` / `srgb` host helpers.
     ///
     /// Idempotent on a shared world: Bevy's `register_component<T>` returns
     /// the same `ComponentId` on repeat, so multiple `VmInstance`s constructed
@@ -115,7 +112,6 @@ impl ComponentRegistry {
             dynamic: HashMap::new(),
             type_registry: TypeRegistry::new(),
         };
-        register_typed!(registry, world, [picking::Pickable]);
         registry.register_field_type::<bevy_color::Color>();
         register_field_types!(
             registry,
