@@ -1,9 +1,6 @@
-// board plugin 脚本：第一帧 / restart 后 spawn 棋盘 tile，并居中相机。
+// board module 脚本：第一帧 / restart 后 spawn 棋盘 tile，并居中相机。
 //
-// populate_mines 也住在这——cell plugin 在首次 reveal 时通过 emit
-// `cell::FirstReveal` 不合适：populate_mines 要看 cell entity，但布雷
-// 是棋盘的事，所以由 cell.rhai 在 handle_reveal 里直接 query Board 拉
-// width/height 自己布雷。这里 board.rhai 只关心 layout（spawn tile）。
+// populate_mines 在 cell.rhai 里——首次 reveal 触发；这里只 layout（spawn tile）。
 
 import "helpers" as h;
 
@@ -28,30 +25,30 @@ fn init_layout(board) {
     for y in 0..h {
         for x in 0..w {
             let e = spawn_entity();
-            set(e, "Position", "x", x.to_float() * pitch);
-            set(e, "Position", "y", y.to_float() * pitch);
-            set(e, "Position", "z", 0.0);
-            set(e, "Sprite2d", "", #{
+            // tile 视觉：sprite 背板 + text 标签共存于同一 entity（都在
+            // Transform 上，z 维度文本略高于 sprite 让它显示在前）。
+            attach_sprite(e, #{
                 color: h::color_hidden(),
                 custom_size: [ts, ts],
             });
-            set(e, "Pickable", "", #{});
-            set(e, "TextLabel", "", #{
-                content: "",
-                font_size: fsize,
-                color: h::text_color_default(),
-            });
-            // cell::Tile 由 cell plugin 注册——这里全限定引用。
+            attach_text(e, "", fsize, h::text_color_default());
+            attach_pickable(e);
+            // 翻牌时直接用 set_sprite_color/set_text_content 修改即可。
+            set_translation(e, [x.to_float() * pitch, y.to_float() * pitch, 0.0]);
+            // cell::Tile 由 cell module 注册——这里全限定引用。
             set(e, "cell::Tile", "x", x);
             set(e, "cell::Tile", "y", y);
         }
     }
 
-    // 居中 2D 相机。难度切换后棋盘尺寸变了也要跟。
+    // 居中 2D 相机——attach + 立即 set_translation 把它移到棋盘中心。
     let cx = (w - 1).to_float() * pitch * 0.5;
     let cy = (h - 1).to_float() * pitch * 0.5;
-    for cam in query("Camera2d") {
-        set(cam, "Position", "x", cx);
-        set(cam, "Position", "y", cy);
+    for cam in query("MainCamera2d") {
+        attach_camera_2d(cam, #{
+            scale: 1.0,
+            clear_color: srgba(0.15, 0.15, 0.18, 1.0),
+        });
+        set_translation(cam, [cx, cy, 999.9]);
     }
 }

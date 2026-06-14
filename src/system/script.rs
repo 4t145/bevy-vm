@@ -1047,6 +1047,81 @@ mod render_host {
                     .unwrap_or(false))
             },
         );
+
+        // ---- set_sprite_color(entity, color) ----------------------------
+        // entity 必须已 attach_sprite——直接改 Bevy Sprite.color。
+        let slots_sc = Rc::clone(slots);
+        engine.register_fn(
+            "set_sprite_color",
+            move |entity: i64, color: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_sc)?;
+                let entity = decode_entity(entity);
+                let new_color = color_from_dynamic(color);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut sprite) = em.get_mut::<Sprite>() {
+                    sprite.color = new_color;
+                }
+                Ok(())
+            },
+        );
+
+        // ---- set_text_content(entity, str) -------------------------------
+        // 改 Text2d 的字符串内容。
+        let slots_tc = Rc::clone(slots);
+        engine.register_fn(
+            "set_text_content",
+            move |entity: i64, content: &str| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_tc)?;
+                let entity = decode_entity(entity);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut text) = em.get_mut::<Text2d>() {
+                    if text.0 != content {
+                        text.0 = content.to_owned();
+                    }
+                }
+                Ok(())
+            },
+        );
+
+        // ---- attach_pickable(entity) -------------------------------------
+        // 显式给 entity 挂 Bevy 的 picking Pickable——大多数情况下 mesh /
+        // sprite picking 后端不需要这个（默认 opt-in），但 UI 按钮 / 自定义
+        // 拾取规则需要。
+        let slots_pk = Rc::clone(slots);
+        engine.register_fn(
+            "attach_pickable",
+            move |entity: i64| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_pk)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                world
+                    .entity_mut(entity)
+                    .insert(bevy::picking::Pickable::default());
+                Ok(())
+            },
+        );
+
+        // ---- set_text_color(entity, color) -------------------------------
+        let slots_tcl = Rc::clone(slots);
+        engine.register_fn(
+            "set_text_color",
+            move |entity: i64, color: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_tcl)?;
+                let entity = decode_entity(entity);
+                let new_color = color_from_dynamic(color);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut tc) = em.get_mut::<TextColor>() {
+                    *tc = TextColor(new_color);
+                }
+                Ok(())
+            },
+        );
     }
 
     fn build_mesh_handle(

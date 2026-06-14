@@ -1,15 +1,9 @@
-// 跨 plugin 共用 helper module。各 plugin 通过 `import "helpers" as h;` 引入。
+// 跨 module 共用 helper module。各 module 通过 `import "helpers" as h;` 引入。
 //
 // 注意 import 的语义：被 import 的模块和宿主在同一个 Engine 里跑，host 函数
-// 透明继承；模块内调 `query("X")` 时使用宿主 plugin 的命名空间上下文。
-
-// ---- reflect 形态构造 -----------------------------------------------------
-
-fn srgba(r, g, b, a) {
-    #{ "Srgba": #{ red: r, green: g, blue: b, alpha: a } }
-}
-fn px(v) { #{ "Px": v } }
-fn percent(v) { #{ "Percent": v } }
+// 透明继承；模块内调 `query("X")` 时使用宿主 module 的命名空间上下文。
+//
+// srgba / srgb / px / percent 已下沉为 host fn，这里不再定义。
 
 // ---- 调色板（与参考项目 bevy-lab/anim.rs 对齐） --------------------------
 

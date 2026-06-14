@@ -1,6 +1,6 @@
 // Minesweeper：仿照 bevy-lab/mine_swipper 的模块拆分。
 //
-// 与单文件版的本质差异：跨 plugin 走事件驱动——
+// 跨 module 走事件驱动——
 // - ui::PickClick 按钮 → emit difficulty::ChangeDifficulty
 // - ui::PickClick tile  → emit cell::Reveal/Flag/ChordCell
 // - difficulty 监听 ChangeDifficulty → 更新 Board → emit cell::RestartGame
@@ -8,31 +8,24 @@
 // - cell     监听以上四类事件做实际 mutation
 // - timer / anim 是纯视图层，不影响游戏状态
 //
-// 多帧延迟：emit 在事件后端一次双缓冲，下一 tick 才被消费。点击后
-// 视觉响应跨 2-3 个 tick——60 FPS 下 ~50 ms，可接受。
-//
 // 单位约定：Camera2d 默认 WindowSize → 1 世界单位 = 1 像素。
 (
     seed: Some(12648430),
     modules: ["board", "cell", "difficulty", "timer", "anim", "ui", "restart"],
+    components: [
+        // 主相机 marker。setup.rhai (board module) 调 attach_camera_2d 把
+        // Bevy 端 Camera2d 挂到这个实体上，并由 board.rhai 在 init_layout
+        // 时居中 transform。
+        (name: "MainCamera2d", default: ()),
+    ],
     entities: [
-        // 棋盘元数据单例。各 plugin 通过 query("board::Board") 找它。
+        // 棋盘元数据单例。各 module 通过 query("board::Board") 找它。
         (components: {
             "board::Board": (width: 8, height: 8, mine_count: 10),
         }),
-        // 主相机。Position 由 board plugin 在 init_layout 时居中到棋盘。
+        // 主相机。
         (components: {
-            "Position": (x: 256.0, y: 256.0, z: 0.0),
-            "Camera2d": (
-                scaling_mode: { "WindowSize": () },
-                scale: 1.0,
-                near: -1000.0,
-                far: 1000.0,
-                z: 999.9,
-                order: 0,
-                active: true,
-                clear_color: Some({ "Srgba": (red: 0.15, green: 0.15, blue: 0.18, alpha: 1.0) }),
-            ),
+            "MainCamera2d": (),
         }),
     ],
 )

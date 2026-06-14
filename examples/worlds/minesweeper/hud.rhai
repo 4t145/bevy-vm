@@ -24,27 +24,27 @@ refresh_hud(board);
 fn init_hud() {
     let root = spawn_entity();
     set(root, "Node", "", #{
-        width: h::percent(100.0),
-        height: h::percent(100.0),
+        width: percent(100.0),
+        height: percent(100.0),
         display: "Flex",
         flex_direction: "Column",
         align_items: "Stretch",
         justify_content: "FlexStart",
     });
-    set(root, "BackgroundColor", "", h::srgba(0.0, 0.0, 0.0, 0.0));
+    set(root, "BackgroundColor", "", srgba(0.0, 0.0, 0.0, 0.0));
 
     let bar = spawn_entity();
     set(bar, "Node", "", #{
-        width: h::percent(100.0),
-        height: h::px(40.0),
+        width: percent(100.0),
+        height: px(40.0),
         display: "Flex",
         flex_direction: "Row",
         align_items: "Center",
         justify_content: "Center",
-        column_gap: h::px(16.0),
+        column_gap: px(16.0),
         padding: #{
-            left: h::px(12.0), right: h::px(12.0),
-            top: h::px(6.0),  bottom: h::px(6.0),
+            left: px(12.0), right: px(12.0),
+            top: px(6.0),  bottom: px(6.0),
         },
     });
     set(bar, "BackgroundColor", "", h::hud_bg_color());
@@ -62,15 +62,15 @@ fn spawn_difficulty_button(parent, which) {
     let btn = spawn_entity();
     set(btn, "Node", "", #{
         padding: #{
-            left: h::px(10.0), right: h::px(10.0),
-            top: h::px(4.0),   bottom: h::px(4.0),
+            left: px(10.0), right: px(10.0),
+            top: px(4.0),   bottom: px(4.0),
         },
         align_items: "Center",
         justify_content: "Center",
     });
     set(btn, "Button", "", #{});
     set(btn, "BackgroundColor", "", h::button_color());
-    set(btn, "Pickable", "", #{});
+    attach_pickable(btn);
     set(btn, "DifficultyButton", "which", which);
     set_parent(btn, parent);
 
