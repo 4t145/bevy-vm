@@ -1,41 +1,19 @@
-// 一个可被鼠标拖动的立方体。
+// drag demo：鼠标拖动一个立方体。
 //
-// 鼠标按下 → DragState.active = true；
-// 移动鼠标 → 累加每次 CursorMoved.delta 到 Position（带缩放）；
-// 鼠标松开 → DragState.active = false。
+// 单 World 架构：视觉与相机由 setup.rhai 第一帧 attach。
 (
     components: [
-        // 拖拽状态：active=1 表示鼠标按住中。
-        (name: "DragState", default: (active: 0)),
+        (name: "DragState", default: (active: 0, x: 0.0, y: 0.0)),
+        (name: "DragCam", default: ()),
+        (name: "DragSetup", default: (done: 0)),
     ],
     entities: [
-        // 立方体本体——挂 Mesh3dRender + Position + DragState 让脚本拖动。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Cube": (size: [1.0, 1.0, 1.0]) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.4, green: 0.7, blue: 0.9, alpha: 1.0) },
-                    metallic: 0.2,
-                    roughness: 0.4,
-                ) },
-            ),
-            "DragState": (active: 0),
-        }),
-        // 主相机：3D 透视，沿 +Z 轴朝原点。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 6.0),
-            "Camera3d": (
-                projection: { "Perspective": (fov_degrees: 60.0, near: 0.1, far: 1000.0) },
-                target: [0.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                order: 0,
-                active: true,
-                clear_color: None,
-            ),
-        }),
+        (components: { "DragState": (active: 0, x: 0.0, y: 0.0) }),
+        (components: { "DragCam": () }),
+        (components: { "DragSetup": (done: 0) }),
     ],
     systems: [
+        Script(path: "setup.rhai"),
         Script(path: "drag.rhai"),
     ],
 )
