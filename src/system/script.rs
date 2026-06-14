@@ -1352,10 +1352,17 @@ mod render_host {
                 bevy::prelude::Mesh::from(bevy::math::primitives::Torus::new(inner, outer))
             }
             "Plane" => {
+                // 地板：法线朝 +Y、横铺在 XZ。Plane3d 是 Bevy 自带的水平面
+                // 原语；旧版用 Rectangle 是 XY 平面（立面），导致相机俯视
+                // 只能看到边缘，玩家"穿过地板"。
+                // 入参约定：[w, h] = 完整宽 / 深（沿 X / Z），与 size 直观。
                 let arr = try_into_array(payload).unwrap_or_default();
                 let w = f32_at(&arr, 0, 10.0);
                 let h = f32_at(&arr, 1, 10.0);
-                bevy::prelude::Mesh::from(bevy::math::primitives::Rectangle::new(w, h))
+                bevy::prelude::Mesh::from(bevy::math::primitives::Plane3d::new(
+                    Vec3::Y,
+                    Vec2::new(w * 0.5, h * 0.5),
+                ))
             }
             "Tetrahedron" => {
                 let edge = if let Ok(f) = payload.as_float() {
