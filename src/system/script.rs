@@ -1032,17 +1032,25 @@ mod render_host {
         if let Some(handle) = world.resource::<AttachCache>().meshes.get(&cache_key) {
             return Ok(handle.clone());
         }
+        let f32_at = |arr: &rhai::Array, idx: usize, default: f32| -> f32 {
+            arr.get(idx)
+                .and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64)))
+                .map(|v| v as f32)
+                .unwrap_or(default)
+        };
         let mesh = match variant.as_str() {
             "Cuboid" | "Cube" => {
                 let arr = try_into_array(payload).unwrap_or_default();
-                let w = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
-                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
-                let d = arr.get(2).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                let w = f32_at(&arr, 0, 1.0);
+                let h = f32_at(&arr, 1, 1.0);
+                let d = f32_at(&arr, 2, 1.0);
                 bevy::prelude::Mesh::from(bevy::math::primitives::Cuboid::new(w, h, d))
             }
             "Sphere" => {
                 let r = if let Ok(f) = payload.as_float() {
                     f as f32
+                } else if let Ok(i) = payload.as_int() {
+                    i as f32
                 } else if let Some(m) = try_into_map(payload.clone()) {
                     float_field(&m, "radius").unwrap_or(0.5)
                 } else {
@@ -1052,29 +1060,58 @@ mod render_host {
             }
             "Cylinder" => {
                 let arr = try_into_array(payload).unwrap_or_default();
-                let r = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(0.5) as f32;
-                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                let r = f32_at(&arr, 0, 0.5);
+                let h = f32_at(&arr, 1, 1.0);
                 bevy::prelude::Mesh::from(bevy::math::primitives::Cylinder::new(r, h))
             }
             "Capsule" => {
                 let arr = try_into_array(payload).unwrap_or_default();
-                let r = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(0.5) as f32;
-                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(1.0) as f32;
+                let r = f32_at(&arr, 0, 0.5);
+                let h = f32_at(&arr, 1, 1.0);
                 bevy::prelude::Mesh::from(bevy::math::primitives::Capsule3d::new(r, h))
+            }
+            "Cone" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let r = f32_at(&arr, 0, 0.5);
+                let h = f32_at(&arr, 1, 1.0);
+                bevy::prelude::Mesh::from(bevy::math::primitives::Cone {
+                    radius: r,
+                    height: h,
+                })
+            }
+            "ConicalFrustum" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let r_top = f32_at(&arr, 0, 0.3);
+                let r_bot = f32_at(&arr, 1, 0.5);
+                let h = f32_at(&arr, 2, 1.0);
+                bevy::prelude::Mesh::from(bevy::math::primitives::ConicalFrustum {
+                    radius_top: r_top,
+                    radius_bottom: r_bot,
+                    height: h,
+                })
+            }
+            "Torus" => {
+                let arr = try_into_array(payload).unwrap_or_default();
+                let inner = f32_at(&arr, 0, 0.3);
+                let outer = f32_at(&arr, 1, 0.8);
+                bevy::prelude::Mesh::from(bevy::math::primitives::Torus::new(inner, outer))
             }
             "Plane" => {
                 let arr = try_into_array(payload).unwrap_or_default();
-                let w = arr.first().and_then(|v| v.as_float().ok()).unwrap_or(10.0) as f32;
-                let h = arr.get(1).and_then(|v| v.as_float().ok()).unwrap_or(10.0) as f32;
+                let w = f32_at(&arr, 0, 10.0);
+                let h = f32_at(&arr, 1, 10.0);
                 bevy::prelude::Mesh::from(bevy::math::primitives::Rectangle::new(w, h))
             }
             "Tetrahedron" => {
                 let edge = if let Ok(f) = payload.as_float() {
                     f as f32
+                } else if let Ok(i) = payload.as_int() {
+                    i as f32
                 } else {
                     1.0
                 };
-                bevy::prelude::Mesh::from(bevy::math::primitives::Tetrahedron::default()).scaled_by(Vec3::splat(edge))
+                bevy::prelude::Mesh::from(bevy::math::primitives::Tetrahedron::default())
+                    .scaled_by(Vec3::splat(edge))
             }
             other => {
                 return Err(into_rhai_error(format!(

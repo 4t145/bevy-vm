@@ -1,57 +1,40 @@
+// gallery demo：glTF 场景 + 程序图元混搭。
+//
+// 单 World 架构后：所有视觉组件由 setup.rhai 第一帧调 attach_* 挂上。
 (
     components: [
-        // 自转脚本用：每 tick 绕 Y 轴增加的角度（度）。
-        (name: "Spin", default: (speed: 0.0)),
+        (name: "Spin", default: (
+            speed: 0.0, yaw_deg: 0.0,
+            x: 0.0, y: 0.0, z: 0.0,
+            scale: 1.0,
+            asset: "",
+            shape: "",
+            color_r: 1.0, color_g: 1.0, color_b: 1.0, color_a: 1.0,
+            metallic: 0.0,
+            roughness: 0.5,
+            emissive_r: 0.0, emissive_g: 0.0, emissive_b: 0.0,
+            radius: 0.5,
+        )),
+        (name: "GalleryCamera", default: ()),
+        (name: "GallerySetup", default: (done: 0)),
     ],
     entities: [
-        // glTF 场景：一棵低多边形树。
-        (components: {
-            "Position": (x: -4.0, y: 0.0, z: 0.0),
-            "Scale": (x: 4.0, y: 4.0, z: 4.0),
-            "SceneRender": (asset: "models/tree.glb#Scene0"),
-            "Spin": (speed: 0.6),
-        }),
-        // glTF 场景：一个宝箱。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 0.0),
-            "Scale": (x: 4.0, y: 4.0, z: 4.0),
-            "SceneRender": (asset: "models/chest.glb#Scene0"),
-            "Spin": (speed: 1.0),
-        }),
-        // glTF 场景：一块石头。
-        (components: {
-            "Position": (x: 4.0, y: 0.0, z: 0.0),
-            "Scale": (x: 4.0, y: 4.0, z: 4.0),
-            "SceneRender": (asset: "models/rock.glb#Scene0"),
-            "Spin": (speed: 0.8),
-        }),
-        // 程序图元 + PBR 材质：发光的金属球。
-        (components: {
-            "Position": (x: -2.0, y: 3.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Sphere": (radius: 0.6) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.9, green: 0.6, blue: 0.2, alpha: 1.0) },
-                    metallic: 1.0,
-                    roughness: 0.25,
-                    emissive: (red: 0.6, green: 0.3, blue: 0.0, alpha: 1.0),
-                ) },
-            ),
-        }),
-        // 程序图元 + 半透明材质：磨砂玻璃方块。
-        (components: {
-            "Position": (x: 2.0, y: 3.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Cube": (size: [1.5, 1.5, 1.5]) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.4, green: 0.7, blue: 0.9, alpha: 0.5) },
-                    roughness: 0.1,
-                ) },
-            ),
-            "Spin": (speed: 1.5),
-        }),
+        // glTF: 树。
+        (components: { "Spin": (speed: 0.6, x: -4.0, scale: 4.0, asset: "models/tree.glb#Scene0") }),
+        (components: { "Spin": (speed: 1.0, scale: 4.0, asset: "models/chest.glb#Scene0") }),
+        (components: { "Spin": (speed: 0.8, x: 4.0, scale: 4.0, asset: "models/rock.glb#Scene0") }),
+        // 发光金属球。
+        (components: { "Spin": (speed: 0.0, x: -2.0, y: 3.0, shape: "Sphere", radius: 0.6,
+            color_r: 0.9, color_g: 0.6, color_b: 0.2, metallic: 1.0, roughness: 0.25,
+            emissive_r: 0.6, emissive_g: 0.3, emissive_b: 0.0) }),
+        // 半透明玻璃方块。
+        (components: { "Spin": (speed: 1.5, x: 2.0, y: 3.0, shape: "Cuboid",
+            color_r: 0.4, color_g: 0.7, color_b: 0.9, color_a: 0.5, roughness: 0.1) }),
+        (components: { "GalleryCamera": () }),
+        (components: { "GallerySetup": (done: 0) }),
     ],
     systems: [
+        Script(path: "setup.rhai"),
         Script(path: "spin.rhai"),
     ],
 )

@@ -1,13 +1,8 @@
 // 通用 3D 物体检视器：相机绕原点的轨道相机。
 //
-// - 鼠标滚轮 → zoom in/out（dolly distance）。
-// - 右键按住 + 拖动 → 环视（orbit：改 yaw/pitch）。
-//
-// 把"被检视的物体"换成你想看的东西即可——挂 Renderable + Position 的任何
-// 实体都会被渲染。脚本只控制相机轨道，不动其他实体。
+// 单 World 架构：视觉与 Camera3d 由 setup.rhai 第一帧 attach。
 (
     components: [
-        // 相机距离：当前值 + 合法区间 + 滚轮速度。
         (
             name: "Zoom",
             default: (
@@ -17,10 +12,6 @@
                 speed: 0.5,
             ),
         ),
-        // 轨道相机的角度 + 拖动状态。
-        // - yaw / pitch 弧度，绕原点的水平 / 俯仰角。
-        // - active=1 表示右键正按住（开始累计 cursor delta）。
-        // - sensitivity：屏幕像素到弧度的换算系数。0.005 ≈ 1px 转 ~0.3°。
         (
             name: "Orbit",
             default: (
@@ -30,37 +21,17 @@
                 sensitivity: 0.005,
             ),
         ),
+        (name: "Subject", default: ()),
+        (name: "OrbitCam", default: ()),
+        (name: "OrbitSetup", default: (done: 0)),
     ],
     entities: [
-        // 被检视对象：一个简单立方体。换成你的 world 主题时直接改这里。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 0.0),
-            "Mesh3dRender": (
-                mesh: { "Cube": (size: [1.5, 1.5, 1.5]) },
-                material: { "Pbr": (
-                    base_color: { "Srgba": (red: 0.6, green: 0.7, blue: 0.85, alpha: 1.0) },
-                    metallic: 0.4,
-                    roughness: 0.35,
-                ) },
-            ),
-        }),
-        // 主相机。Position 由脚本按 (yaw, pitch, distance) 球坐标算出。
-        // 初始值 yaw=0/pitch=0/distance=6 → (0, 0, 6)，朝 -Z 看原点。
-        (components: {
-            "Position": (x: 0.0, y: 0.0, z: 6.0),
-            "Camera3d": (
-                projection: { "Perspective": (fov_degrees: 60.0, near: 0.1, far: 1000.0) },
-                target: [0.0, 0.0, 0.0],
-                up: [0.0, 1.0, 0.0],
-                order: 0,
-                active: true,
-                clear_color: None,
-            ),
-            "Zoom": (distance: 6.0),
-            "Orbit": (yaw: 0.0, pitch: 0.0),
-        }),
+        (components: { "Subject": () }),
+        (components: { "OrbitCam": (), "Zoom": (distance: 6.0), "Orbit": (yaw: 0.0, pitch: 0.0) }),
+        (components: { "OrbitSetup": (done: 0) }),
     ],
     systems: [
+        Script(path: "setup.rhai"),
         Script(path: "object_viewer_3d.rhai"),
     ],
 )
