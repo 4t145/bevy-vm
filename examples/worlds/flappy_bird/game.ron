@@ -1,0 +1,31 @@
+// game plugin：相机 + GameRoot + PlayArea + Game 单例 + 地面视觉。
+//
+// 状态字段：
+// - layout_built: 0 = 还没 setup（第一帧 / restart 后地面 sprite 仍在，不必重建）
+// - state: 0=playing 1=dead；bird 写入，pipes / hud 读
+// - score: 通过的管道对数；pipes 在管道首次穿过 bird_x 时 +1
+// - elapsed: 自开局以来累计；pipes 用于 spawn 节奏 + 初始延迟
+//
+// Game 是单例 entity——其它 module 通过 query("game::Game") 找它。
+(
+    components: [
+        (
+            name: "Game",
+            default: (
+                layout_built: 0,
+                state: 0,
+                score: 0,
+                elapsed: 0.0,
+            ),
+        ),
+        // 地面 marker——仅作为视觉（绿草层 + 沙黄底层）。碰撞由 bird 自己
+        // 判 y 是否触底，无需 query 这个组件。
+        (name: "Ground", default: ()),
+    ],
+    entities: [
+        (components: { "Game": () }),
+    ],
+    systems: [
+        Script(path: "game.rhai"),
+    ],
+)

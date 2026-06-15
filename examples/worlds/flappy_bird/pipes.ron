@@ -1,0 +1,51 @@
+// pipes plugin：管道生成 + 滚动 + 计分。
+//
+// 状态字段（Pipe component）：
+// - pos_x：管道对（top + bottom 同 x）的 x（playfield 坐标，+X 向右）
+// - gap_y：开口中心 y（playfield 坐标，+Y 向上）
+// - passed：是否已计分（鸟 x 越过本管道 → score += 1，passed=1 防重复）
+// - top_sprite / bottom_sprite：上下两条管道 child Node entity 的 to_bits id
+//
+// 算法每帧（仅当 Game.state==0）：
+//   1. elapsed 自上次 spawn 累计 → 到 spawn_period 时 spawn 一对新管道
+//   2. 所有 Pipe.pos_x -= speed * dt；同步 sprite 的 left
+//   3. 完全飘出 playfield 左侧 → despawn pipe + 两条 sprite
+//   4. 鸟 x（固定 bird_x）越过该 pipe 后端 → score += 1（写到 Game.score）
+//
+// dependencies = ["bird"] 是为了 Pipe 在 bird 之后注册——bird.rhai 用
+// `query("pipes::Pipe")` 做碰撞，组件必须先存在。
+(
+    dependencies: ["game", "bird"],
+    components: [
+        (
+            name: "Pipe",
+            default: (
+                pos_x: 0.0,
+                gap_y: 0.0,
+                passed: 0,
+                top_sprite: 0,
+                bottom_sprite: 0,
+            ),
+        ),
+        // 单例：上次 spawn 的时间戳（相对 Game.elapsed），避免每帧扫所有
+        // Pipe 找最右一根的烦琐。
+        (
+            name: "PipeSpawner",
+            default: (
+                last_spawn: 0.0,
+            ),
+        ),
+    ],
+    entities: [
+        (components: { "PipeSpawner": () }),
+    ],
+    systems: [
+        // 必须 after game / bird / restart——elapsed 来自 game；bird 已经
+        // 完成本帧物理 + 碰撞判定，pipes 在它之后滚动 / 计分；restart emit
+        // RestartGame 由本 plugin 同 tick despawn 老管道。
+        Script(
+            path: "pipes.rhai",
+            after: ["game", "bird", "restart"],
+        ),
+    ],
+)

@@ -1,0 +1,13 @@
+// restart plugin：dead 状态下监听 Space / R → emit bird::RestartGame。
+//
+// 必须 dead 才响应 Space——否则 Space 同帧既触发跳跃又重开，体验混乱。
+// 排在 bird / pipes 前——同帧 emit 让两者同 tick 消费完成复位。
+(
+    dependencies: ["game", "bird"],
+    systems: [
+        Script(
+            path: "restart.rhai",
+            before: ["bird", "pipes"],
+        ),
+    ],
+)

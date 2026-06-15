@@ -1,0 +1,18 @@
+// hud plugin：分数文字 + game over panel。
+//
+// HUD 不持有自己的根 Node——挂为 GameRoot 的子节点。
+// score 文字常驻 PlayArea 顶部中央；game over panel 仅 state==1 时显示。
+(
+    dependencies: ["game", "bird"],
+    components: [
+        // kind: "score" / "go_panel" / "go_score" / "go_hint"
+        (name: "HudKind", default: (kind: "")),
+    ],
+    systems: [
+        // 跑在 bird 之后——bird 写 Game.state；hud 同帧反映 Game Over。
+        Script(
+            path: "hud.rhai",
+            after: ["bird", "pipes"],
+        ),
+    ],
+)

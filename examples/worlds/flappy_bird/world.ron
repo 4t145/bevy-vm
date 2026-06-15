@@ -1,0 +1,28 @@
+// Flappy Bird：仿照 minesweeper / tetris 的模块拆分。
+//
+// module 拓扑：
+//   game   ← bird ← pipes
+//                ↖ hud
+//   restart → bird / pipes（before）
+//
+// 跨 module 走事件驱动——
+// - bird 监听 KeyboardInput → 跳跃；落地 / 撞管道 → 写 Game.state=1（dead）
+// - pipes 监听 Game.state → 0 时滚动 + 生成；管道穿过 bird_x() 加 1 分
+// - restart 在 dead 状态下监听 Space/R → emit RestartGame
+// - bird / pipes 监听 RestartGame → 自身复位 + despawn 老管道
+// - hud 是纯视图层，不影响游戏状态
+//
+// 单位约定：整个 game 走 Bevy UI（playfield = 一个绝对定位 Node 居中），
+// 相机为默认 Camera2d，1 世界单位 = 1 像素。鸟 / 管道 / 地面都是 PlayArea
+// 子节点用 position_type=Absolute 定位——脚本写 left/top 直接落到屏幕坐标。
+(
+    seed: Some(20260616),
+    modules: ["game", "bird", "pipes", "hud", "restart"],
+    components: [
+        // 全 game 唯一的根 Node——game::setup 第一帧 spawn。
+        (name: "GameRoot", default: ()),
+        // 居中的固定尺寸 playfield 容器。各 module 把可视实体挂为它的子节点。
+        (name: "PlayArea", default: ()),
+    ],
+    entities: [],
+)

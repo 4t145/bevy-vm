@@ -1,0 +1,41 @@
+// bird plugin：鸟的物理 + 输入 + 与管道 / 地面 / 顶部边界的碰撞。
+//
+// 状态字段：
+// - pos_x / pos_y：playfield 内的世界坐标（PlayArea 中心为原点，+Y 向上）
+// - vel_y：垂直速度（px/s，+Y 向上为正）
+// - sprite：视觉 child entity 的 to_bits id；每帧把 (pos_x, pos_y) 翻成
+//   PlayArea 内的 (left, top) 写到这个 Node 上
+//
+// "+Y 向上"是脚本的物理坐标系；UI 的 top 以 PlayArea 左上角为原点向下增大，
+// 所以渲染时要做一次翻转（见 update_visual）。
+(
+    dependencies: ["game"],
+    components: [
+        (
+            name: "Bird",
+            default: (
+                pos_x: 0.0,
+                pos_y: 0.0,
+                vel_y: 0.0,
+                sprite: 0,
+                spawned: 0,
+            ),
+        ),
+    ],
+    events: [
+        // RestartGame 无字段——bird / pipes 都监听它做复位。
+        (name: "RestartGame", default: ()),
+    ],
+    entities: [
+        (components: { "Bird": () }),
+    ],
+    systems: [
+        // 必须 after game / restart——
+        // - game 写 elapsed，bird 不直接依赖但 layout_built 必须先成立才能挂 sprite
+        // - restart emit RestartGame，本系统同 tick 消费
+        Script(
+            path: "bird.rhai",
+            after: ["game", "restart"],
+        ),
+    ],
+)
