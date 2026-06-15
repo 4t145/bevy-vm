@@ -44,7 +44,12 @@ impl VmInstanceBuilder {
     /// Returns [`VmError::Event`] when the registration fails.
     pub fn with_event<T>(mut self, name: &str) -> Result<Self, VmError>
     where
-        T: Serialize + for<'de> Deserialize<'de> + Send + 'static,
+        T: bevy_ecs::message::Message
+            + Serialize
+            + for<'de> Deserialize<'de>
+            + Send
+            + Sync
+            + 'static,
     {
         self.events.register_typed::<T>(name)?;
         Ok(self)
@@ -57,7 +62,13 @@ impl VmInstanceBuilder {
     /// Returns [`VmError::Event`] on registration failure.
     pub fn with_event_default<T>(mut self, name: &str) -> Result<Self, VmError>
     where
-        T: Serialize + for<'de> Deserialize<'de> + Default + Send + 'static,
+        T: bevy_ecs::message::Message
+            + Serialize
+            + for<'de> Deserialize<'de>
+            + Default
+            + Send
+            + Sync
+            + 'static,
     {
         self.events.register_typed_with_default::<T>(name)?;
         Ok(self)
@@ -169,7 +180,12 @@ impl VmInstanceBuilder {
         }
 
         let systems = schedule_scripts(&plugins, &components, &events, id)?;
-        let store = EventStore::new(&events);
+        // typed channel 走 Bevy `Messages<T>`——先确保资源在 World 上存在，
+        // 然后构造 EventStore（cursor 在此时已能看到当前 tail）。
+        for (_, typed) in events.typed_events() {
+            typed.ensure_resource(world);
+        }
+        let store = EventStore::new(world, &events);
         Ok(VmInstance {
             id,
             components,
@@ -335,13 +351,34 @@ impl VmInstance {
         &mut self.store
     }
 
-    /// Send a typed event into the back buffer for `name`.
+    /// Send a typed event by name into Bevy's `Messages<T>` resource — every
+    /// VM whose registry has this typed channel will see it next read.
+    ///
+    /// Host code rarely needs this directly: a Bevy system or observer can
+    /// just call `world.send_message::<T>(...)` / `MessageWriter<T>::write(...)`.
+    /// Provided as an ergonomic shortcut for tests and host glue that already
+    /// holds a `&mut World` plus a [`VmInstance`].
     ///
     /// # Errors
     ///
-    /// Returns [`VmError::Event`] when the channel is unknown / dynamic / wrong T.
-    pub fn send_event<T: Send + 'static>(&mut self, name: &str, event: T) -> Result<(), VmError> {
-        self.store.push_typed(name, event).map_err(VmError::from)
+    /// Returns [`VmError::Event`] when the channel is unknown, dynamic, or
+    /// the wrong Rust type.
+    pub fn send_event<T>(&mut self, world: &mut World, name: &str, event: T) -> Result<(), VmError>
+    where
+        T: bevy_ecs::message::Message
+            + Serialize
+            + for<'de> Deserialize<'de>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let value = serde_json::to_value(event).map_err(|e| EventError::Serialize {
+            name: name.to_owned(),
+            reason: e.to_string(),
+        })?;
+        self.store
+            .emit_typed(world, name, value)
+            .map_err(VmError::from)
     }
 
     /// Send a dynamic event by name. Payload is merged with the declared default.
@@ -368,24 +405,6 @@ impl VmInstance {
             }
         };
         self.store.push_dynamic(name, merged).map_err(VmError::from)
-    }
-
-    /// Drain typed events from `name`'s front buffer.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`VmError::Event`] on channel mismatches.
-    pub fn drain_events<T: Send + 'static>(&mut self, name: &str) -> Result<Vec<T>, VmError> {
-        self.store.drain_typed::<T>(name).map_err(VmError::from)
-    }
-
-    /// Drain dynamic events from `name`'s front buffer.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`VmError::Event`] on channel mismatches.
-    pub fn drain_events_dynamic(&mut self, name: &str) -> Result<Vec<Value>, VmError> {
-        self.store.drain_dynamic(name).map_err(VmError::from)
     }
 
     /// Query every entity in `world` carrying both `component` and this

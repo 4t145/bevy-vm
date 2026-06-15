@@ -200,8 +200,6 @@ fn setup_dropdown_ui(mut commands: Commands, catalog: Res<WorldCatalog>, active:
             },
             BackgroundColor(Color::NONE),
             GlobalZIndex(1000),
-            // host 容器本身不接收 picking——避免空白区抢占下方 VM picking。
-            bevy::picking::Pickable::IGNORE,
         ))
         .id();
 
@@ -220,6 +218,9 @@ fn setup_dropdown_ui(mut commands: Commands, catalog: Res<WorldCatalog>, active:
             },
             BackgroundColor(Color::srgba(0.10, 0.12, 0.16, 0.85)),
             BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.20)),
+            // require_markers 模式下按钮必须显式挂 Pickable，否则 UI backend
+            // 不会把它当 picking target。`Button` widget 自身不带 Pickable。
+            bevy::picking::Pickable::default(),
         ))
         .id();
     let toggle_text = commands
@@ -231,7 +232,6 @@ fn setup_dropdown_ui(mut commands: Commands, catalog: Res<WorldCatalog>, active:
                 ..default()
             },
             TextColor(Color::srgb(0.92, 0.92, 0.96)),
-            bevy::picking::Pickable::IGNORE,
         ))
         .id();
     commands.entity(toggle).add_child(toggle_text);
@@ -268,6 +268,7 @@ fn setup_dropdown_ui(mut commands: Commands, catalog: Res<WorldCatalog>, active:
                     ..default()
                 },
                 BackgroundColor(default_world_button_color(false, false)),
+                bevy::picking::Pickable::default(),
             ))
             .id();
         let entry_text = commands
@@ -278,7 +279,6 @@ fn setup_dropdown_ui(mut commands: Commands, catalog: Res<WorldCatalog>, active:
                     ..default()
                 },
                 TextColor(Color::srgb(0.95, 0.95, 0.97)),
-                bevy::picking::Pickable::IGNORE,
             ))
             .id();
         commands.entity(entry).add_child(entry_text);

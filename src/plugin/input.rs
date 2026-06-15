@@ -35,7 +35,6 @@
 use crate::VmInstanceBuilder;
 use crate::error::VmError;
 use crate::plugin::VmPlugin;
-use crate::vm::VmEventAppExt;
 use bevy::app::App;
 use bevy::input::keyboard::{KeyboardFocusLost, KeyboardInput};
 use bevy::input::mouse::{MouseButtonInput, MouseMotion, MouseWheel};
@@ -87,11 +86,14 @@ impl VmPlugin for InputPlugin {
     }
 
     fn build_app(&self, app: &mut App) {
-        app.add_vm_event_in::<MouseButtonInput>(MOUSE_BUTTON)
-            .add_vm_event_in::<MouseMotion>(MOUSE_MOTION)
-            .add_vm_event_in::<MouseWheel>(MOUSE_WHEEL)
-            .add_vm_event_in::<CursorMoved>(CURSOR_MOVED)
-            .add_vm_event_in::<KeyboardInput>(KEYBOARD_INPUT)
-            .add_vm_event_in::<KeyboardFocusLost>(KEYBOARD_FOCUS_LOST);
+        // Bevy 的 winit 集成 + InputPlugin 已注册这些 `Messages<T>` 资源；
+        // `add_message` 是 idempotent，再次调用以兜底——比如 headless smoke 或
+        // 不带 winit 的 sub-App 仍能让脚本侧 `events("MouseButton")` 拿到资源。
+        app.add_message::<MouseButtonInput>()
+            .add_message::<MouseMotion>()
+            .add_message::<MouseWheel>()
+            .add_message::<CursorMoved>()
+            .add_message::<KeyboardInput>()
+            .add_message::<KeyboardFocusLost>();
     }
 }

@@ -1,0 +1,11 @@
+// transition plugin：处理关卡间切换。
+//
+// state==1 + won_timer 倒数到 0 → 清场 + level_idx++ + 标记 board_built=0。
+// 下一帧 board.rhai 重建新关。
+// 越过最后一关（>= total）→ state=3 (complete)，停在屏幕。
+(
+    dependencies: ["board", "robbo"],
+    systems: [
+        Script(path: "transition.rhai"),
+    ],
+)

@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "tools"]
+
 [package]
 name = "bevy-vm"
 version = "0.1.0"
@@ -22,7 +25,7 @@ rand_chacha = "0.9"
 # 配置文本解析器：每种格式由对应 cargo feature 决定是否开。
 ron = { version = "0.12", optional = true }
 thiserror = "2"
-rhai = "1.25"
+rhai = { version = "1.25", features = ["internals"] }
 tracing = "0.1"
 # basis-universal: 支持 KHR_texture_basisu（Basis 压缩纹理）的 glTF，许多线上资产用它。
 # serialize: 让 bevy_input 等 crate 的事件类型自动带 serde——VM 事件桥按名字

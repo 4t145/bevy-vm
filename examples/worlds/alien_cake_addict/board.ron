@@ -1,0 +1,40 @@
+// board plugin：单例 Game state + 14x21 棋盘 + 主相机。
+//
+// 几何：i 沿 x（0..14），j 沿 z（0..21）。每格高度在 [-0.1, 0.1) 随机抖动。
+// state: 0=playing, 1=gameover。
+(
+    components: [
+        (
+            name: "Game",
+            default: (
+                score: 0,
+                cake_eaten: 0,
+                state: 0,
+                move_cd: 0.0,
+                spawn_cd: 5.0,
+                // camera 平滑 focus 状态（实际目标 / 当前所看）。
+                focus_target_x: 7.0,
+                focus_target_y: 0.0,
+                focus_target_z: 10.0,
+                focus_now_x: 7.0,
+                focus_now_y: 0.0,
+                focus_now_z: 10.0,
+                // hud / restart 一次性 spawn 标记。
+                hud_built: 0,
+                board_built: 0,
+            ),
+        ),
+        (name: "Cell", default: (i: 0, j: 0, height: 0.0)),
+        (name: "MainCam", default: ()),
+    ],
+    entities: [
+        // 单例 Game：所有 module 通过 query("board::Game") 找它。
+        (components: { "Game": () }),
+    ],
+    systems: [
+        // setup：第一帧 spawn camera + tiles。
+        Script(path: "board.rhai"),
+        // camera focus 平滑追随：在 player / bonus 后跑，能拿到最新位置。
+        Script(path: "camera.rhai", after: ["player", "bonus"]),
+    ],
+)

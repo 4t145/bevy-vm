@@ -1,0 +1,18 @@
+// bullets plugin：Robbo 射出的子弹。
+//
+// Shift+方向键 = 一次性 spawn 一颗 Bullet（消耗 1 ammo），方向锁定。
+// 子弹每 N tick 走 1 格，撞墙销毁、撞敌人双双销毁、跑出棋盘销毁。
+(
+    dependencies: ["board", "robbo"],
+    components: [
+        // dx / dy ∈ {-1, 0, 1}，固定方向；i / j 当前网格坐标。
+        (name: "Bullet", default: (i: 0, j: 0, dx: 0, dy: 0)),
+    ],
+    systems: [
+        // 排在 robbo 后：robbo.rhai spawn 子弹，bullets.rhai 同帧不立即推进它
+        // —— bullets 顶部按 tick_count % N == 0 节流，第一帧 tick_count 已为 0
+        // 会推进，但子弹 spawn 在 robbo.rhai，发射的同帧 bullets 看到它就会走
+        // 一格——可以接受（视觉上"瞬时离开"）。
+        Script(path: "bullets.rhai", after: ["robbo"]),
+    ],
+)

@@ -12,7 +12,7 @@
 // 与 Bevy `add_systems(Update, (input_router.before(handle_cell), hud.after(handle_cell)))`
 // 的语义对齐。
 (
-    dependencies: ["cell", "difficulty", "timer", "anim"],
+    dependencies: ["board", "cell", "difficulty", "timer", "anim"],
     components: [
         // 状态文本节点的 marker：kind="timer" / "mines" / "phase"。
         (name: "HudKind", default: (kind: "")),

@@ -66,9 +66,8 @@ pub trait VmPlugin {
     ///
     /// Runs once per [`AppVmPluginExt::add_vm_plugin`] call. Typical work:
     /// register Bevy events with [`App::add_message`](bevy::app::App::add_message)
-    /// and install pump systems via the
-    /// [`crate::vm::VmEventAppExt::add_vm_event`] helper so they line up
-    /// with the same channel names registered on `build_vm`.
+    /// or add observers — VM-side typed channels read straight from Bevy's
+    /// `Messages<T>` resource via per-VM cursors, so no pump system is needed.
     ///
     /// Default implementation does nothing — VM-only plugins (e.g. ones that
     /// just register dynamic events) need not override.

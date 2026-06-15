@@ -1,0 +1,12 @@
+// hud plugin：scoreboard + game over UI + space 重启。
+(
+    dependencies: ["board", "bonus"],
+    components: [
+        (name: "ScoreText", default: ()),
+        (name: "GameOverRoot", default: ()),
+        (name: "GameOverText", default: ()),
+    ],
+    systems: [
+        Script(path: "hud.rhai"),
+    ],
+)

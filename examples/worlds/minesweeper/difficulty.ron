@@ -9,8 +9,15 @@
         (name: "ChangeDifficulty", default: (which: "")),
     ],
     systems: [
-        // 排在 cell 前——difficulty 处理 ChangeDifficulty 后 emit RestartGame，
-        // 同帧让 cell 消费完成清空 + reset。
-        Script(path: "difficulty.rhai", before: ["cell"]),
+        // 必须 after ui::input_router——difficulty 按钮的 PickClick 由
+        // input_router 翻译成 ChangeDifficulty 事件，本系统才能同帧消费；
+        // dynamic 事件 buffer 帧末清空，跨帧不可读。
+        // 同时排在 cell 前——difficulty 处理 ChangeDifficulty 后 emit
+        // RestartGame，让 cell 同帧消费完成清空 + reset。
+        Script(
+            path: "difficulty.rhai",
+            after: ["ui::input_router"],
+            before: ["cell"],
+        ),
     ],
 )

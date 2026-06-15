@@ -391,6 +391,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy-vm-tools"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bevy_a11y"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

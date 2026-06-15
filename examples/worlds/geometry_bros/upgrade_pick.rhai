@@ -1,4 +1,4 @@
-// upgrade_pick：监听 PickClick，若点中 UpgradeCard 应用属性 + 关闭面板。
+// upgrade_pick：扫本帧 picking click 缓冲，若点中 UpgradeCard 应用属性 + 关闭面板。
 
 let players = query("player::Player");
 if players.len() == 0 { return; }

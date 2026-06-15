@@ -19,12 +19,16 @@
 //! for the entire run with no aliasing or concurrent access. Outside a run
 //! the slots are null and host functions error rather than deref.
 
+mod const_fold;
 mod convert;
+
+pub use const_fold::ConstFoldRegistry;
 
 use crate::component::ComponentRegistry;
 use crate::error::VmError;
 use crate::event::{EventKind, EventRegistry, EventStore, merge_with_default};
 use crate::random::VmRng;
+use crate::resource::config::ConfigCache;
 use crate::system::{Pause, System, TickContext};
 use crate::world_access;
 use bevy_ecs::entity::Entity;
@@ -67,15 +71,21 @@ struct Slots {
     rng: Cell<*mut VmRng>,
     time: Cell<*mut Time<()>>,
     pause: Cell<*mut Pause>,
+    /// Per-VM config cache。由 ScriptSystem 持有 [`ConfigCache`]，
+    /// `fill` 时把指针借进来。这块 cache 在 ScriptSystem 之间共享同一份
+    /// 不必——`load_config` 同一 path 多次出现各分配一个 fold id，运行时
+    /// 句柄不复用；cache 由 path 去重。
+    config_cache: Cell<*mut ConfigCache>,
 }
 
 impl Slots {
-    fn fill(&self, ctx: &mut TickContext<'_>) {
+    fn fill(&self, ctx: &mut TickContext<'_>, config_cache: &mut ConfigCache) {
         self.world.set(ptr::from_mut(ctx.world));
         self.events.set(ptr::from_mut(ctx.events));
         self.rng.set(ptr::from_mut(ctx.rng));
         self.time.set(ptr::from_mut(ctx.time));
         self.pause.set(ptr::from_mut(ctx.pause));
+        self.config_cache.set(ptr::from_mut(config_cache));
     }
 
     fn clear(&self) {
@@ -84,6 +94,7 @@ impl Slots {
         self.rng.set(ptr::null_mut());
         self.time.set(ptr::null_mut());
         self.pause.set(ptr::null_mut());
+        self.config_cache.set(ptr::null_mut());
     }
 }
 
@@ -98,6 +109,8 @@ pub struct ScriptSystem {
     /// VM 实例 id——host 函数 query/spawn 用它给 entity 加 VmTag、给 query
     /// 加 VmTag 过滤。
     vm_id: VmId,
+    /// Per-script 配置缓存——`load_config` 句柄按 path 去重。
+    config_cache: std::cell::RefCell<ConfigCache>,
 }
 
 impl ScriptSystem {
@@ -134,11 +147,21 @@ impl ScriptSystem {
             script_dir.to_path_buf(),
         ));
 
+        // Const-fold registry：编译期 token mapper 把 fold-eligible host fn
+        // 的字面量字符串参数替换成整数句柄，运行时直接走 const int。
+        let fold_registry: Rc<std::cell::RefCell<ConstFoldRegistry>> =
+            Rc::new(std::cell::RefCell::new(ConstFoldRegistry::new()));
+        fold_registry.borrow_mut().register("load_config");
+        #[allow(deprecated)]
+        engine.on_parse_token(const_fold::build_token_mapper(Rc::clone(&fold_registry)));
+
         let slots: Rc<Slots> = Rc::new(Slots::default());
+        let base_dir: Rc<std::path::Path> = Rc::from(script_dir.to_path_buf().into_boxed_path());
         register_world_functions(&mut engine, &slots, &components, &plugin_name, vm_id);
         register_event_functions(&mut engine, &slots, &events, &plugin_name);
         register_random(&mut engine, &slots);
         register_time(&mut engine, &slots);
+        register_config(&mut engine, &slots, &fold_registry, &base_dir);
         register_logging(&mut engine);
         register_ui_helpers(&mut engine);
         #[cfg(feature = "bevy-bridge")]
@@ -162,6 +185,7 @@ impl ScriptSystem {
             run_if,
             slots,
             vm_id,
+            config_cache: std::cell::RefCell::new(ConfigCache::new()),
         })
     }
 
@@ -181,7 +205,8 @@ impl System for ScriptSystem {
     /// 执行期间宿主函数可通过作用域指针读写 World / EventStore / RNG /
     /// Time / Pause；返回前指针槽被清空。
     fn run(&self, ctx: &mut TickContext<'_>) -> Result<(), VmError> {
-        self.slots.fill(ctx);
+        let mut cache = self.config_cache.borrow_mut();
+        self.slots.fill(ctx, &mut cache);
         let result = self.run_inner();
         self.slots.clear();
         result
@@ -276,6 +301,29 @@ fn register_query(
             .into_iter()
             .map(|entity| Dynamic::from(encode_entity(entity)))
             .collect()
+    });
+
+    // `query_first(component) -> entity_id | ()`：常用于"单例查询"——
+    // `let game = query_first("Game"); if game == () { return; }`。
+    // 返回第一个带该组件 + 本 VM tag 的 entity，没有则返回 unit `()`。
+    //
+    // 当前实现内部仍走全表 query 后取首个；后续如果有性能需求，可在
+    // [`world_access::query_with_component_tagged`] 旁加专门的"找第一个"
+    // 路径，避免拉满整个 Vec。
+    let slots_q1 = Rc::clone(slots);
+    let reg_q1 = Rc::clone(registry);
+    let plug_q1 = Rc::clone(plugin_name);
+    engine.register_fn("query_first", move |component: &str| -> Dynamic {
+        let Some(world) = with_world_mut(&slots_q1) else {
+            return Dynamic::UNIT;
+        };
+        let resolved =
+            resolve_component_name(&plug_q1, component, |n| reg_q1.resolve(n).is_some());
+        world_access::query_with_component_tagged(world, &reg_q1, &resolved, vm_id)
+            .into_iter()
+            .next()
+            .map(|entity| Dynamic::from(encode_entity(entity)))
+            .unwrap_or(Dynamic::UNIT)
     });
 
     let slots_h = Rc::clone(slots);
@@ -573,8 +621,6 @@ fn register_event_functions(
     registry: &Rc<EventRegistry>,
     plugin_name: &Rc<str>,
 ) {
-    use crate::event::ChannelStorage;
-
     let slots_emit = Rc::clone(slots);
     let reg_emit = Rc::clone(registry);
     let plug_emit = Rc::clone(plugin_name);
@@ -582,26 +628,22 @@ fn register_event_functions(
         "emit",
         move |name: &str, payload: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
             let payload = convert::from_dynamic(payload).map_err(error_to_rhai)?;
-            let store = events_mut(&slots_emit)?;
             let resolved =
                 resolve_component_name(&plug_emit, name, |n| reg_emit.resolve(n).is_some());
             match reg_emit.resolve(&resolved) {
                 Some(EventKind::Typed(typed)) => {
                     let merged = merge_with_default(payload, typed.default.as_ref());
-                    let storage = store.storage_mut(&resolved).ok_or_else(|| {
-                        into_rhai_error(format!("event `{resolved}` is not registered"))
-                    })?;
-                    let ChannelStorage::Typed(buffer) = storage else {
-                        return Err(into_rhai_error(format!(
-                            "event `{resolved}` channel kind mismatch"
-                        )));
-                    };
-                    typed
-                        .emit_from_value(buffer, &resolved, merged)
+                    // typed channel 走 World.Messages<T> —— 需要 &mut World
+                    // 同时操作 store。先把 World 取出，再调 emit。
+                    let world = world_mut(&slots_emit)?;
+                    let store = events_mut(&slots_emit)?;
+                    store
+                        .emit_typed(world, &resolved, merged)
                         .map_err(error_to_rhai)
                 }
                 Some(EventKind::Dynamic(dyn_event)) => {
                     let merged = merge_with_default(payload, Some(&dyn_event.default));
+                    let store = events_mut(&slots_emit)?;
                     store.push_dynamic(&resolved, merged).map_err(error_to_rhai)
                 }
                 None => Err(into_rhai_error(format!(
@@ -617,37 +659,34 @@ fn register_event_functions(
     engine.register_fn(
         "events",
         move |name: &str| -> Result<Vec<Dynamic>, Box<rhai::EvalAltResult>> {
-            let store = events_ref(&slots_read)?;
             let resolved =
                 resolve_component_name(&plug_read, name, |n| reg_read.resolve(n).is_some());
             // 读端宽容：通道未注册时返回空数组而非报错。让脚本可以"假如有 X
             // 就处理"地监听 host plugin 提供的事件——headless 测试或裁剪
             // build 下 plugin 缺失时脚本不该崩。emit() 写端仍严格。
-            let Some(storage) = store.storage(&resolved) else {
+            let Some(kind) = reg_read.resolve(&resolved) else {
                 tracing::debug!(
                     target: "bevy_vm::script",
                     "events(`{resolved}`): channel not registered, returning empty",
                 );
                 return Ok(Vec::new());
             };
-            match (reg_read.resolve(&resolved), storage) {
-                (Some(EventKind::Typed(typed)), ChannelStorage::Typed(buffer)) => {
-                    let len = buffer.front_len();
-                    let mut out = Vec::with_capacity(len);
-                    for index in 0..len {
-                        let value = typed
-                            .serialize_front_at(buffer, index)
-                            .map_err(error_to_rhai)?;
-                        out.push(convert::to_dynamic(&value));
-                    }
-                    Ok(out)
+            match kind {
+                EventKind::Typed(_) => {
+                    // typed channel 直接读 Bevy `Messages<T>`——cursor 维护
+                    // 在 EventStore 里，每个 VM 各自独立。
+                    let world = world_ref(&slots_read)?;
+                    let store = events_mut(&slots_read)?;
+                    let values = store.read_typed(world, &resolved).map_err(error_to_rhai)?;
+                    Ok(values.iter().map(convert::to_dynamic).collect())
                 }
-                (Some(EventKind::Dynamic(_)), ChannelStorage::Dynamic(buffer)) => {
+                EventKind::Dynamic(_) => {
+                    let store = events_ref(&slots_read)?;
+                    let buffer = store.dynamic_buffer(&resolved).ok_or_else(|| {
+                        into_rhai_error(format!("event `{resolved}` is not registered"))
+                    })?;
                     Ok(buffer.current().iter().map(convert::to_dynamic).collect())
                 }
-                _ => Err(into_rhai_error(format!(
-                    "event `{resolved}` channel kind mismatch"
-                ))),
             }
         },
     );
@@ -768,16 +807,19 @@ fn register_ui_helpers(engine: &mut Engine) {
 #[allow(dead_code, unused_imports, clippy::collapsible_if)]
 mod render_host {
     use super::{
-        Slots, VmId, VmTag, decode_entity, error_to_rhai, into_rhai_error, with_world_mut,
-        world_mut,
+        Slots, VmId, VmTag, decode_entity, encode_entity, error_to_rhai, into_rhai_error,
+        with_world_mut, world_mut,
     };
+    use crate::world_access;
     use bevy::asset::{AssetServer, Assets, Handle};
+    use bevy::audio::{AudioPlayer, AudioSource, PlaybackMode, PlaybackSettings, Volume};
     use bevy::color::Color;
-    use bevy::math::{Vec2, Vec3};
+    use bevy::image::{TextureAtlas, TextureAtlasLayout};
+    use bevy::math::{UVec2, Vec2, Vec3};
     use bevy::prelude::{
-        Camera, Camera2d, Camera3d, ClearColorConfig, Mesh, Mesh3d, MeshMaterial3d,
-        OrthographicProjection, PerspectiveProjection, Projection, Quat, Sprite, StandardMaterial,
-        Transform,
+        Camera, Camera2d, Camera3d, ClearColorConfig, DirectionalLight, Mesh, Mesh3d,
+        MeshMaterial3d, OrthographicProjection, PerspectiveProjection, PointLight, Projection,
+        Quat, Sprite, StandardMaterial, Transform,
     };
     use bevy::scene::{Scene, SceneRoot};
     use bevy::sprite::Text2d;
@@ -794,13 +836,14 @@ mod render_host {
     pub struct AttachCache {
         meshes: std::collections::HashMap<String, Handle<Mesh>>,
         materials: std::collections::HashMap<String, Handle<StandardMaterial>>,
+        atlas_layouts: std::collections::HashMap<String, Handle<TextureAtlasLayout>>,
     }
 
     impl AttachCache {
         /// 返回内部 mesh map（render plugin 切换 world 时清场用）。
         #[must_use]
         pub fn is_empty(&self) -> bool {
-            self.meshes.is_empty() && self.materials.is_empty()
+            self.meshes.is_empty() && self.materials.is_empty() && self.atlas_layouts.is_empty()
         }
     }
 
@@ -1036,6 +1079,73 @@ mod render_host {
             },
         );
 
+        // ---- attach_point_light(entity, opts) --------------------------
+        // opts 形如 #{ color: srgb(...), intensity: 2_000_000.0,
+        //              range: 30.0, shadows: true }。缺省值与 Bevy
+        // `PointLight::default()` 对齐。
+        let slots_pl = Rc::clone(slots);
+        engine.register_fn(
+            "attach_point_light",
+            move |entity: i64, opts: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_pl)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let light = build_point_light(opts);
+                world.entity_mut(entity).insert(light);
+                Ok(())
+            },
+        );
+
+        // ---- attach_directional_light(entity, opts) -------------------
+        // opts 形如 #{ color: srgb(...), illuminance: 10_000.0,
+        //              shadows: true }。`Transform.rotation` 决定方向，
+        //              脚本端通过 `set_transform` / `Rotation` alias 指定。
+        let slots_dl = Rc::clone(slots);
+        engine.register_fn(
+            "attach_directional_light",
+            move |entity: i64, opts: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_dl)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                let light = build_directional_light(opts);
+                world.entity_mut(entity).insert(light);
+                Ok(())
+            },
+        );
+
+        // ---- play_sound(path, opts) ------------------------------------
+        // 一次性播放 path 指向的音频。Bevy 端走 AudioPlayer + PlaybackSettings。
+        // opts 形如 #{ volume: 0.7, speed: 1.0, mode: "Once"|"Loop"|"Despawn",
+        //              paused: false, muted: false }。返回 spawn 的 entity id
+        //            ——脚本可保留它后续 despawn 实现停播。
+        // 资源路径相对 viewer 的 AssetPlugin file_path（通常 examples/assets/）。
+        let slots_ps = Rc::clone(slots);
+        engine.register_fn(
+            "play_sound",
+            move |path: &str, opts: Dynamic| -> Result<i64, Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_ps)?;
+                let entity = world_access::spawn(world);
+                world.entity_mut(entity).insert(VmTag::new(vm_id));
+                attach_audio_components(world, entity, path, opts);
+                Ok(encode_entity(entity))
+            },
+        );
+
+        // ---- attach_audio(entity, path, opts) --------------------------
+        // 同 play_sound 但挂在指定 entity（不新 spawn）——用于位置音效或
+        // 让脚本管理自己的 audio entity 生命周期。
+        let slots_aa = Rc::clone(slots);
+        engine.register_fn(
+            "attach_audio",
+            move |entity: i64, path: &str, opts: Dynamic| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_aa)?;
+                let entity = decode_entity(entity);
+                ensure_tagged(world, entity, vm_id)?;
+                attach_audio_components(world, entity, path, opts);
+                Ok(())
+            },
+        );
+
         // ---- set_transform(entity, translation, euler_xyz_deg, scale) ---
         let slots_tr = Rc::clone(slots);
         engine.register_fn(
@@ -1183,6 +1293,49 @@ mod render_host {
             },
         );
 
+        // ---- set_sprite_atlas_index(entity, index) -----------------------
+        // entity 已 attach_sprite + 带 atlas——切 atlas section 到新 index，
+        // 用于 sprite-sheet 动画 / tile-map 切片复用。layout handle 不变，
+        // 只动 `TextureAtlas.index` 字段。
+        let slots_sai = Rc::clone(slots);
+        engine.register_fn(
+            "set_sprite_atlas_index",
+            move |entity: i64, index: i64| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_sai)?;
+                let entity = decode_entity(entity);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut sprite) = em.get_mut::<Sprite>() {
+                    if let Some(atlas) = sprite.texture_atlas.as_mut() {
+                        atlas.index = index.max(0) as usize;
+                    }
+                }
+                Ok(())
+            },
+        );
+
+        // ---- set_sprite_flip(entity, flip_x, flip_y) ---------------------
+        let slots_sf = Rc::clone(slots);
+        engine.register_fn(
+            "set_sprite_flip",
+            move |entity: i64,
+                  flip_x: bool,
+                  flip_y: bool|
+                  -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_sf)?;
+                let entity = decode_entity(entity);
+                let mut em = world
+                    .get_entity_mut(entity)
+                    .map_err(|_| into_rhai_error("entity gone".to_owned()))?;
+                if let Some(mut sprite) = em.get_mut::<Sprite>() {
+                    sprite.flip_x = flip_x;
+                    sprite.flip_y = flip_y;
+                }
+                Ok(())
+            },
+        );
+
         // ---- set_text_content(entity, str) -------------------------------
         // 改 Text2d 的字符串内容。
         let slots_tc = Rc::clone(slots);
@@ -1243,6 +1396,22 @@ mod render_host {
                 world
                     .entity_mut(entity)
                     .insert(bevy::picking::Pickable::default());
+                Ok(())
+            },
+        );
+
+        // ---- pickable_ignore(entity) -------------------------------------
+        // 标记 entity 不接收 picking 事件，且不阻挡下层。常见用法：UI 按钮
+        // 内部的 label 子节点——不让 label 抢父按钮的 PickClick。
+        let slots_pi = Rc::clone(slots);
+        engine.register_fn(
+            "pickable_ignore",
+            move |entity: i64| -> Result<(), Box<rhai::EvalAltResult>> {
+                let world = world_mut(&slots_pi)?;
+                let entity = decode_entity(entity);
+                world
+                    .entity_mut(entity)
+                    .insert(bevy::picking::Pickable::IGNORE);
                 Ok(())
             },
         );
@@ -1432,6 +1601,10 @@ mod render_host {
                 Some(Vec2::new(w, h))
             });
         let image = map.get("image").and_then(|v| v.clone().into_string().ok());
+        let texture_atlas = map
+            .get("atlas")
+            .and_then(|v| try_into_map(v.clone()))
+            .map(|atlas_map| build_texture_atlas(world, &atlas_map));
         let mut sprite = if let Some(path) = image {
             let server = world.resource::<AssetServer>();
             Sprite {
@@ -1445,7 +1618,82 @@ mod render_host {
         if let Some(size) = custom_size {
             sprite.custom_size = Some(size);
         }
+        sprite.texture_atlas = texture_atlas;
         sprite
+    }
+
+    /// `atlas: #{ tile_size: [w,h], columns: c, rows: r,
+    ///           padding: [px,py]?, offset: [ox,oy]?, index: i }` →
+    /// `TextureAtlas { layout, index }`。layout handle 按 `(tile, c, r,
+    /// padding, offset)` 缓存到 [`AttachCache`]，同尺寸网格共享一份。
+    fn build_texture_atlas(world: &mut bevy_ecs::world::World, map: &Map) -> TextureAtlas {
+        let tile = map
+            .get("tile_size")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let w = a.first().and_then(|v| v.as_int().ok())? as u32;
+                let h = a.get(1).and_then(|v| v.as_int().ok())? as u32;
+                Some(UVec2::new(w, h))
+            })
+            .unwrap_or(UVec2::splat(32));
+        let columns = map
+            .get("columns")
+            .and_then(|v| v.as_int().ok())
+            .map(|i| i as u32)
+            .unwrap_or(1);
+        let rows = map
+            .get("rows")
+            .and_then(|v| v.as_int().ok())
+            .map(|i| i as u32)
+            .unwrap_or(1);
+        let padding = map
+            .get("padding")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let x = a.first().and_then(|v| v.as_int().ok())? as u32;
+                let y = a.get(1).and_then(|v| v.as_int().ok())? as u32;
+                Some(UVec2::new(x, y))
+            });
+        let offset = map
+            .get("offset")
+            .and_then(|v| try_into_array(v.clone()))
+            .and_then(|a| {
+                let x = a.first().and_then(|v| v.as_int().ok())? as u32;
+                let y = a.get(1).and_then(|v| v.as_int().ok())? as u32;
+                Some(UVec2::new(x, y))
+            });
+        let index = map
+            .get("index")
+            .and_then(|v| v.as_int().ok())
+            .map(|i| i as usize)
+            .unwrap_or(0);
+
+        let cache_key = format!(
+            "{}x{}_c{}r{}_p{}x{}_o{}x{}",
+            tile.x,
+            tile.y,
+            columns,
+            rows,
+            padding.map(|p| p.x).unwrap_or(0),
+            padding.map(|p| p.y).unwrap_or(0),
+            offset.map(|o| o.x).unwrap_or(0),
+            offset.map(|o| o.y).unwrap_or(0),
+        );
+
+        let cache = ensure_cache(world);
+        let layout = if let Some(handle) = cache.atlas_layouts.get(&cache_key) {
+            handle.clone()
+        } else {
+            let new_layout = TextureAtlasLayout::from_grid(tile, columns, rows, padding, offset);
+            let mut layouts = world.resource_mut::<Assets<TextureAtlasLayout>>();
+            let handle = layouts.add(new_layout);
+            world
+                .resource_mut::<AttachCache>()
+                .atlas_layouts
+                .insert(cache_key, handle.clone());
+            handle
+        };
+        TextureAtlas { layout, index }
     }
 
     fn build_camera_3d(opts: Dynamic) -> (Camera, Projection, Transform) {
@@ -1537,11 +1785,94 @@ mod render_host {
         (camera, projection, transform)
     }
 
+    fn attach_audio_components(
+        world: &mut bevy_ecs::world::World,
+        entity: bevy_ecs::entity::Entity,
+        path: &str,
+        opts: Dynamic,
+    ) {
+        let server = world.resource::<AssetServer>();
+        let handle: Handle<AudioSource> = server.load(path.to_owned());
+        let settings = build_playback_settings(opts);
+        world
+            .entity_mut(entity)
+            .insert((AudioPlayer::new(handle), settings));
+    }
+
+    fn build_playback_settings(opts: Dynamic) -> PlaybackSettings {
+        let map = try_into_map(opts).unwrap_or_default();
+        let mut settings = PlaybackSettings::ONCE;
+        if let Some(mode) = map.get("mode").and_then(|v| v.clone().into_string().ok()) {
+            settings.mode = match mode.as_str() {
+                "Loop" => PlaybackMode::Loop,
+                "Despawn" => PlaybackMode::Despawn,
+                _ => PlaybackMode::Once,
+            };
+        }
+        if let Some(v) = float_field(&map, "volume") {
+            settings.volume = Volume::Linear(v);
+        }
+        if let Some(v) = float_field(&map, "speed") {
+            settings.speed = v;
+        }
+        if let Some(b) = map.get("paused").and_then(|v| v.as_bool().ok()) {
+            settings.paused = b;
+        }
+        if let Some(b) = map.get("muted").and_then(|v| v.as_bool().ok()) {
+            settings.muted = b;
+        }
+        settings
+    }
+
+    fn build_point_light(opts: Dynamic) -> PointLight {
+        let map = try_into_map(opts).unwrap_or_default();
+        let mut light = PointLight::default();
+        if let Some(color) = map.get("color") {
+            light.color = color_from_dynamic(color.clone());
+        }
+        if let Some(v) = float_field(&map, "intensity") {
+            light.intensity = v;
+        }
+        if let Some(v) = float_field(&map, "range") {
+            light.range = v;
+        }
+        if let Some(v) = float_field(&map, "radius") {
+            light.radius = v;
+        }
+        if let Some(b) = map.get("shadows").and_then(|v| v.as_bool().ok()) {
+            light.shadows_enabled = b;
+        }
+        light
+    }
+
+    fn build_directional_light(opts: Dynamic) -> DirectionalLight {
+        let map = try_into_map(opts).unwrap_or_default();
+        let mut light = DirectionalLight::default();
+        if let Some(color) = map.get("color") {
+            light.color = color_from_dynamic(color.clone());
+        }
+        if let Some(v) = float_field(&map, "illuminance") {
+            light.illuminance = v;
+        }
+        if let Some(b) = map.get("shadows").and_then(|v| v.as_bool().ok()) {
+            light.shadows_enabled = b;
+        }
+        light
+    }
+
     fn build_camera_2d(opts: Dynamic) -> (Camera, Projection, Transform) {
         let map = try_into_map(opts).unwrap_or_default();
         let mut p = OrthographicProjection::default_2d();
         if let Some(s) = float_field(&map, "scale") {
             p.scale = s;
+        }
+        // viewport_height: 让相机的可见纵向高度等于 N 个世界单位（用于像素
+        // 风格游戏自适应窗口）。优先级高于 scale——同时设也以 viewport_height
+        // 为准。
+        if let Some(h) = float_field(&map, "viewport_height") {
+            p.scaling_mode = bevy::camera::ScalingMode::FixedVertical {
+                viewport_height: h,
+            };
         }
         let projection = Projection::Orthographic(p);
         let transform = Transform::default();
@@ -1596,6 +1927,136 @@ mod render_host {
         }
         None
     }
+}
+
+/// 注册配置文件 host fn：`load_config` / `config_get` / `config_len` /
+/// `config_keys`。
+///
+/// `load_config(arg)` 接受 **整数 fold 句柄** 或 **字符串 path**：
+/// - fold 路径：`load_config("levels/01.json")` 经 token mapper 替换后变成
+///   `load_config(0)`；host fn 用 0 反查 [`ConstFoldRegistry`] 拿原 path，
+///   再走 [`ConfigCache::ensure_loaded`] 拿 cache id，**仍返回该 cache id**。
+///   多次出现同 path 各分配一个 fold 句柄，但 cache id 复用——脚本拿到的
+///   `cfg` 句柄稳定指向同一份 LoadedConfig。
+/// - fallback：`load_config(some_var)` token mapper 不动，host fn 收到
+///   字符串走相同 cache 流程。
+///
+/// `config_get(handle, "a.b.0.c") -> Dynamic`：按 path 取嵌套值。叶子转
+/// 为对应 Rhai 类型；中间 Object/Array 转为 Map/Array（深拷贝）。
+fn register_config(
+    engine: &mut Engine,
+    slots: &Rc<Slots>,
+    fold: &Rc<std::cell::RefCell<ConstFoldRegistry>>,
+    base_dir: &Rc<std::path::Path>,
+) {
+    // ---- load_config（fold 整数句柄） --------------------------------
+    let slots_lci = Rc::clone(slots);
+    let fold_lci = Rc::clone(fold);
+    let base_lci = Rc::clone(base_dir);
+    engine.register_fn(
+        "load_config",
+        move |fold_id: i64| -> Result<i64, Box<rhai::EvalAltResult>> {
+            let path = fold_lci
+                .borrow()
+                .lookup("load_config", fold_id)
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    into_rhai_error(format!(
+                        "load_config: unknown fold handle {fold_id} (was the literal const-folded?)"
+                    ))
+                })?;
+            let cache = config_cache_mut(&slots_lci)?;
+            let id = cache
+                .ensure_loaded(&base_lci, &path)
+                .map_err(error_to_rhai)?;
+            Ok(id as i64)
+        },
+    );
+
+    // ---- load_config（字符串 fallback——非字面量参数） ---------------
+    let slots_lcs = Rc::clone(slots);
+    let base_lcs = Rc::clone(base_dir);
+    engine.register_fn(
+        "load_config",
+        move |path: &str| -> Result<i64, Box<rhai::EvalAltResult>> {
+            let cache = config_cache_mut(&slots_lcs)?;
+            let id = cache
+                .ensure_loaded(&base_lcs, path)
+                .map_err(error_to_rhai)?;
+            Ok(id as i64)
+        },
+    );
+
+    // ---- config_get(handle, path) -> Dynamic -------------------------
+    let slots_cg = Rc::clone(slots);
+    engine.register_fn(
+        "config_get",
+        move |handle: i64, path: &str| -> Result<Dynamic, Box<rhai::EvalAltResult>> {
+            let cache = config_cache_ref(&slots_cg)?;
+            let cfg = cache.get(handle).map_err(error_to_rhai)?;
+            let value = cfg.get(path).map_err(error_to_rhai)?;
+            Ok(convert::to_dynamic(value))
+        },
+    );
+
+    // ---- config_len(handle, path) -> i64 -----------------------------
+    // Object → key 数；Array → 元素数；其他类型 → 0。
+    let slots_cl = Rc::clone(slots);
+    engine.register_fn(
+        "config_len",
+        move |handle: i64, path: &str| -> Result<i64, Box<rhai::EvalAltResult>> {
+            let cache = config_cache_ref(&slots_cl)?;
+            let cfg = cache.get(handle).map_err(error_to_rhai)?;
+            let value = cfg.get(path).map_err(error_to_rhai)?;
+            let len = match value {
+                serde_json::Value::Array(a) => a.len() as i64,
+                serde_json::Value::Object(o) => o.len() as i64,
+                serde_json::Value::String(s) => s.chars().count() as i64,
+                _ => 0,
+            };
+            Ok(len)
+        },
+    );
+
+    // ---- config_keys(handle, path) -> Vec<Dynamic> -------------------
+    // 仅对 Object 有意义；其他类型返回空数组。
+    let slots_ck = Rc::clone(slots);
+    engine.register_fn(
+        "config_keys",
+        move |handle: i64, path: &str| -> Result<Vec<Dynamic>, Box<rhai::EvalAltResult>> {
+            let cache = config_cache_ref(&slots_ck)?;
+            let cfg = cache.get(handle).map_err(error_to_rhai)?;
+            let value = cfg.get(path).map_err(error_to_rhai)?;
+            let keys = match value {
+                serde_json::Value::Object(o) => o
+                    .keys()
+                    .map(|k| Dynamic::from(rhai::ImmutableString::from(k.as_str())))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            Ok(keys)
+        },
+    );
+}
+
+/// 取 ConfigCache 可变引用——槽空时报错。
+#[allow(
+    clippy::mut_from_ref,
+    reason = "scoped raw pointer bridge; soundness ensured by exclusive single-threaded execution"
+)]
+fn config_cache_mut(slots: &Rc<Slots>) -> Result<&mut ConfigCache, Box<rhai::EvalAltResult>> {
+    let ptr = slots.config_cache.get();
+    if ptr.is_null() {
+        return Err(into_rhai_error(
+            "config host fn called with no active ConfigCache".to_owned(),
+        ));
+    }
+    // SAFETY: see module doc.
+    Ok(unsafe { &mut *ptr })
+}
+
+fn config_cache_ref(slots: &Rc<Slots>) -> Result<&ConfigCache, Box<rhai::EvalAltResult>> {
+    config_cache_mut(slots).map(|c| &*c)
 }
 
 /// 注册 `log(msg)` 宿主：把脚本的诊断输出转发到 `tracing::info`，便于在

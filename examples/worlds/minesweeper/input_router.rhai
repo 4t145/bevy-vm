@@ -1,4 +1,4 @@
-// ui plugin / input_router system：把所有 PickClick 翻译成领域事件。
+// ui plugin / input_router system：把本帧 PickClick 翻译成领域事件。
 //
 // 此 system 排在 cell 前（before: ["cell"]）——dynamic 事件同帧消费让
 // 新生的 cell::* 事件本帧就被 cell handler 看到，零延迟。

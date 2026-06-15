@@ -21,6 +21,13 @@
                 start_time: 0.0,
             ),
         ),
+        // 棋盘 grid 容器 marker——restart 时 despawn 它整棵子树（含 row /
+        // tile / label），下一帧由 board.rhai 用新尺寸重建。
+        (name: "BoardGrid", default: ()),
+        // HUD slot：board 第一帧 spawn 的空 status bar 容器，hud.rhai 把
+        // 难度按钮 / 文字往里 append。先 spawn HUD slot 再 spawn BoardGrid，
+        // 保证两者顺序（slot top, grid bottom）跨 restart 不变。
+        (name: "HudSlot", default: ()),
     ],
     systems: [
         Script(path: "board.rhai"),

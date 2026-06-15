@@ -1,0 +1,15 @@
+// teleport plugin：踩到 '&' 瞬移到另一个 '&' 旁边一格。
+//
+// 简化版（vs 原版的 group + 方向选择）：把所有 '&' 视作一个池子，按 i*1000+j
+// 排序为稳定顺序；进入某个 '&' 就循环找下一个 '&'，把 Robbo 放到它的输出
+// 方向（与进入方向一致）相邻空地；该格被占则继续找下一个。
+//
+// 进入方式：Robbo 移动到 '&'。robbo.rhai 把 teleport 当作"特殊 pickup"——走
+// 进去（不 despawn '&'）但**不消耗 Cell**。teleport.rhai 在 robbo 之后跑，
+// 检查 Robbo 当前位置是否站在 '&' 上，若是则瞬移并 set Player 位置。
+(
+    dependencies: ["board", "robbo"],
+    systems: [
+        Script(path: "teleport.rhai", after: ["robbo"]),
+    ],
+)

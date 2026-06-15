@@ -8,24 +8,22 @@
 // - cell     监听以上四类事件做实际 mutation
 // - timer / anim 是纯视图层，不影响游戏状态
 //
-// 单位约定：Camera2d 默认 WindowSize → 1 世界单位 = 1 像素。
+// 单位约定：整个 game 走 Bevy UI（Node + Button），相机为默认 Camera2d，
+// 1 世界单位 = 1 像素。tile 是 Node + Button（不再是 sprite），背景色 +
+// label child Text 完成视觉。
 (
     seed: Some(12648430),
     modules: ["board", "cell", "difficulty", "timer", "anim", "ui", "restart"],
     components: [
-        // 主相机 marker。setup.rhai (board module) 调 attach_camera_2d 把
-        // Bevy 端 Camera2d 挂到这个实体上，并由 board.rhai 在 init_layout
-        // 时居中 transform。
-        (name: "MainCamera2d", default: ()),
+        // 全 game 唯一的根 Node——board 的 init_layout 第一帧 spawn 它，
+        // hud 把 status bar 挂为它的子节点，board grid 也挂为它的子节点。
+        // 两个 module 通过 query("GameRoot") 找它。
+        (name: "GameRoot", default: ()),
     ],
     entities: [
         // 棋盘元数据单例。各 module 通过 query("board::Board") 找它。
         (components: {
             "board::Board": (width: 8, height: 8, mine_count: 10),
-        }),
-        // 主相机。
-        (components: {
-            "MainCamera2d": (),
         }),
     ],
 )

@@ -1,0 +1,14 @@
+// enemies plugin：蝴蝶 V（Eyes）AI——朝 Robbo 直走。
+//
+// 阶段 2 只接 Eyes 一种，bear 的迷宫 AI 留给阶段 3。
+//
+// 蝴蝶不是单独的 entity，仍是 board::Cell{kind="V"}——AI 系统每 N tick 计算
+// 它们的下一步，原地修改 Cell 的 (i, j) + transform。这样和子弹的命中逻辑
+// 自然对得上（`board::Cell` query 看到敌人位置）。
+(
+    dependencies: ["board", "robbo"],
+    systems: [
+        // robbo 之后跑——读到本帧 Robbo 已 mutate 后的位置。
+        Script(path: "enemies.rhai", after: ["robbo"]),
+    ],
+)

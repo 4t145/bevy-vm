@@ -1,0 +1,14 @@
+// hud plugin：屏幕顶部状态栏 —— Screws / Keys / Ammo 计数。
+(
+    dependencies: ["board", "robbo"],
+    components: [
+        (name: "LevelText", default: ()),
+        (name: "ScrewText", default: ()),
+        (name: "KeyText", default: ()),
+        (name: "AmmoText", default: ()),
+        (name: "PhaseText", default: ()),
+    ],
+    systems: [
+        Script(path: "hud.rhai"),
+    ],
+)

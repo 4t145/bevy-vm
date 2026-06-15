@@ -42,16 +42,13 @@ fn typed_mouse_button_event_reaches_script() {
     };
 
     for _ in 0..3 {
-        vm.send_event::<MouseButtonInput>(input::MOUSE_BUTTON, make_press())
+        vm.send_event::<MouseButtonInput>(&mut world, input::MOUSE_BUTTON, make_press())
             .expect("typed MouseButton sends cleanly");
     }
 
-    // Strict double-buffer:
-    //   tick 1: events sit in MouseButton.back; script's `events("MouseButton")` is empty.
-    //           tick-end swap promotes them to front.
-    //   tick 2: script reads 3 events, sets Counter.clicks = 0 + 3.
-    vm.tick(&mut world).expect("tick 1");
-    vm.tick(&mut world).expect("tick 2");
+    // 拆桥后 typed event 直接走 Bevy `Messages<MouseButtonInput>`：一次 tick
+    // 即可让脚本读到全部 3 个 click 并写入 Counter.clicks。
+    vm.tick(&mut world).expect("tick");
 
     let clicks = vm
         .get(&world, counter_entity, "Counter", "clicks")

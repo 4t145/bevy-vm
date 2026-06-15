@@ -1,0 +1,11 @@
+// reset plugin：R 键重启当前关卡。
+//
+// 一个标准做法：despawn 所有 game-side entity（Cell、Player、Bullet、Enemy
+// 等）→ Game.board_built=0 → 让 board.rhai 下一帧重建。Camera 和 GameRoot
+// 保留（不属于 BoardRoot 子树，restart 跨帧稳定）。
+(
+    dependencies: ["board", "robbo"],
+    systems: [
+        Script(path: "reset.rhai"),
+    ],
+)

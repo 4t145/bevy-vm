@@ -17,6 +17,4 @@ pub use id::{VmId, VmTag};
 pub use instance::{VmInstance, VmInstanceBuilder, VmRegistry};
 
 #[cfg(feature = "bevy-bridge")]
-pub use plugin::{
-    VmAppPlugin, VmEventAppExt, VmTickSet, despawn_tagged_entities, insert_vm_instance,
-};
+pub use plugin::{VmAppPlugin, VmTickSet, despawn_tagged_entities, insert_vm_instance};

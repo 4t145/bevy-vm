@@ -1,0 +1,49 @@
+// board plugin：第一帧加载关卡、spawn 所有 tile、camera。
+//
+// Tile 用 atlas index 映射的 sprite 渲染——每个 tile entity 上挂 Cell（i,j,
+// kind）让游戏 system 能 query 棋盘状态。Robbo 是单独的 Player entity（不是
+// Cell），动作由 player module 处理。
+//
+// 棋盘 16×31，每格 32px。Camera2d 默认坐标系：Y 上为正，sprite 渲染中心。
+// 我们把 grid 摆成 (x_world, y_world) = (i*32, -j*32)——row 0 在最上面。
+(
+    components: [
+        // 单例 Game 状态：当前关索引、screws 数、阶段标记。
+        // state: 0=playing, 1=won（短暂展示胜利→自动进下关），
+        //        2=dead, 3=complete（全部 58 关通关）。
+        // won_timer：state==1 时倒数到 0 自动切下一关；按帧递减。
+        (
+            name: "Game",
+            default: (
+                level_idx: 0,         // 0-based
+                screws_collected: 0,
+                screws_total: 0,
+                keys: 0,
+                ammo: 0,
+                state: 0,
+                won_timer: 0,
+                board_built: 0,
+                // 敌人 / 子弹的整数 frame counter——用统一 tick 步进，避免
+                // 每个 entity 自己存 cooldown 字段（脚本端 += dt 不便）。
+                tick_count: 0,
+            ),
+        ),
+        // 棋盘格 marker。kind 是 char 字符串，用于 query 时判定类型。
+        // dir_i：敌人 / Gun 的朝向索引（0=E 1=S 2=W 3=N，鸟用整数 ±1）。
+        // shoot_cd：Gun 的射击冷却（剩余 tick 数）。
+        (
+            name: "Cell",
+            default: (i: 0, j: 0, kind: "", dir_i: 0, shoot_cd: 0),
+        ),
+        // 主相机 marker。
+        (name: "MainCam", default: ()),
+        // 棋盘容器 entity（restart 时整棵 despawn 重建）。
+        (name: "BoardRoot", default: ()),
+    ],
+    entities: [
+        (components: { "Game": () }),
+    ],
+    systems: [
+        Script(path: "board.rhai"),
+    ],
+)

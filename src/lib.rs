@@ -24,4 +24,4 @@ pub use error::VmError;
 pub use vm::{VmId, VmInstance, VmInstanceBuilder, VmRegistry, VmTag};
 
 #[cfg(feature = "bevy-bridge")]
-pub use vm::{VmAppPlugin, VmEventAppExt, VmTickSet, despawn_tagged_entities, insert_vm_instance};
+pub use vm::{VmAppPlugin, VmTickSet, despawn_tagged_entities, insert_vm_instance};

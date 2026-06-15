@@ -189,8 +189,10 @@ fn compute_adjacency(board) {
 }
 
 fn handle_restart(board) {
-    for tile in query("Tile") {
-        despawn(tile);
+    // despawn 整棵 BoardGrid 子树——Bevy hierarchy hook 级联到 row / tile /
+    // label。layout_built=0 让 board.rhai 下一帧用新尺寸重建。
+    for grid in query("board::BoardGrid") {
+        despawn(grid);
     }
     set(board, "board::Board", "layout_built", 0);
     set(board, "board::Board", "mines_placed", 0);

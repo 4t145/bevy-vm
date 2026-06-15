@@ -1,0 +1,17 @@
+// Robbo（仿 GNU Robbo / Atari）的 VM 移植。阶段 1：
+// - 单关（关 1）
+// - sprite atlas 渲染所有 tile
+// - Robbo 方向键移动 + 阻挡判定
+// - PushBox '~' 推动
+// - 拾取螺丝/钥匙/弹药
+// - HUD 显示已收集螺丝数
+//
+// 其他机制（敌人、子弹、传送、磁场、激光、爆炸、多关）后续阶段加。
+(
+    seed: Some(20251215),
+    modules: ["board", "robbo", "enemies", "guns", "bullets", "teleport", "hud", "reset", "transition"],
+    components: [
+        // 全屏游戏根 Node。
+        (name: "GameRoot", default: ()),
+    ],
+)

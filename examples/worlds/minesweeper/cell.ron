@@ -11,7 +11,9 @@
 (
     dependencies: ["board"],
     components: [
-        (name: "Tile", default: (mine: 0, adj: 0, revealed: 0, flag: 0, x: 0, y: 0)),
+        // tile 状态。label 字段记 child Text entity 的 to_bits id，让
+        // anim 直接定位文字 child 而不必走 query("TileLabel")。
+        (name: "Tile", default: (mine: 0, adj: 0, revealed: 0, flag: 0, x: 0, y: 0, label: 0)),
     ],
     events: [
         // entity 字段是 tile 的 VM entity id（脚本端用 to_bits 整数）。
@@ -22,6 +24,12 @@
         (name: "RestartGame", default: ()),
     ],
     systems: [
-        Script(path: "cell.rhai"),
+        // 必须 after ui::input_router / difficulty / restart——这三处是
+        // RevealCell / FlagCell / ChordCell / RestartGame 的 emitter。
+        // dynamic 事件帧内消费，跨帧丢失，所以 cell 必须在它们之后跑。
+        Script(
+            path: "cell.rhai",
+            after: ["ui::input_router", "difficulty", "restart"],
+        ),
     ],
 )

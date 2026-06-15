@@ -3,6 +3,10 @@
 // 此 system 排在 cell 后（after: ["cell"]）——这样 refresh_hud 看到的
 // `state` / `flag_count` / `mines_placed` 都已是本帧 cell handler 处理后的
 // 最新值，玩家点击的反馈同帧呈现。
+//
+// HUD 不持有自己的根 Node——挂为 board module 创建的 `GameRoot` 的子节点
+// （第一个 child），与 board grid 同根并列；这样 picking layer 自然一致，
+// 没有"全屏 root 截胡"的问题。
 
 import "helpers" as h;
 
@@ -12,50 +16,27 @@ if board_q.len() == 0 {
 }
 let board = board_q[0];
 
-// HUD 第一次 spawn（用 query("HudKind") 是否为空作为 once flag）。
+// HUD 第一次 spawn——以 query("HudKind") 是否为空作为 once flag。
+// HUD slot 由 board.rhai 第一帧预占（保证它在 BoardGrid 之上），本系统只
+// 把按钮 / 文字 append 进去。
 let hud_built = query("HudKind").len() > 0;
 if !hud_built {
-    init_hud();
+    let slot_q = query("board::HudSlot");
+    if slot_q.len() > 0 {
+        init_hud(slot_q[0]);
+    }
 }
 refresh_hud(board);
 
 // ---- HUD 构建 ------------------------------------------------------------
 
-fn init_hud() {
-    let root = spawn_entity();
-    set(root, "Node", "", #{
-        width: percent(100.0),
-        height: percent(100.0),
-        display: "Flex",
-        flex_direction: "Column",
-        align_items: "Stretch",
-        justify_content: "FlexStart",
-    });
-    set(root, "BackgroundColor", "", srgba(0.0, 0.0, 0.0, 0.0));
-
-    let bar = spawn_entity();
-    set(bar, "Node", "", #{
-        width: percent(100.0),
-        height: px(40.0),
-        display: "Flex",
-        flex_direction: "Row",
-        align_items: "Center",
-        justify_content: "Center",
-        column_gap: px(16.0),
-        padding: #{
-            left: px(12.0), right: px(12.0),
-            top: px(6.0),  bottom: px(6.0),
-        },
-    });
-    set(bar, "BackgroundColor", "", h::hud_bg_color());
-    set_parent(bar, root);
-
-    spawn_difficulty_button(bar, "Easy");
-    spawn_difficulty_button(bar, "Med");
-    spawn_difficulty_button(bar, "Hard");
-    spawn_hud_text(bar, "timer", "00:00");
-    spawn_hud_text(bar, "mines", "Mines: 10");
-    spawn_hud_text(bar, "phase", "Ready");
+fn init_hud(slot) {
+    spawn_difficulty_button(slot, "Easy");
+    spawn_difficulty_button(slot, "Med");
+    spawn_difficulty_button(slot, "Hard");
+    spawn_hud_text(slot, "timer", "00:00");
+    spawn_hud_text(slot, "mines", "Mines: 10");
+    spawn_hud_text(slot, "phase", "Ready");
 }
 
 fn spawn_difficulty_button(parent, which) {
@@ -102,13 +83,14 @@ fn refresh_hud(board) {
         elapsed = get(timer_q[0], "timer::GameTimer", "elapsed");
     }
 
-    // 雷数
+    // 雷数：mine_count - flag_count，下钳在 0 避免显示负数。
     let mine_count = get(board, "board::Board", "mine_count");
     let flag_count = 0;
     for tile in query("cell::Tile") {
         if get(tile, "cell::Tile", "flag") == 1 { flag_count += 1; }
     }
     let remaining = mine_count - flag_count;
+    if remaining < 0 { remaining = 0; }
 
     // 阶段
     let state = get(board, "board::Board", "state");
@@ -126,6 +108,11 @@ fn refresh_hud(board) {
             set(hud, "Text", "", `Mines: ${remaining}`);
         } else if kind == "phase" {
             set(hud, "Text", "", phase);
+            // 胜利 / 失败用颜色凸显，避免和 "Playing" 同色被忽略。
+            let color = if state == 1 { h::hud_win_color() }
+                else if state == 2 { h::hud_loss_color() }
+                else { h::hud_text_color() };
+            set(hud, "TextColor", "", color);
         }
     }
 

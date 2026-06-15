@@ -21,6 +21,7 @@
 //! - 这里（`resource.rs` 顶层）—— `ResourceBuilder` trait + `BuildContext`
 //!   + `CacheKey<R>` + `ResourceCache`，依赖 Bevy，gate 在 `bevy-bridge` feature 下。
 
+pub mod config;
 pub mod image;
 pub mod material;
 pub mod mesh;

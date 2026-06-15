@@ -17,6 +17,8 @@ fn text_color_default() { srgba(0.10, 0.10, 0.15, 1.0) }
 fn flag_text_color() { srgba(0.20, 0.10, 0.10, 1.0) }
 fn hud_bg_color() { srgba(0.10, 0.10, 0.10, 0.85) }
 fn hud_text_color() { srgba(1.0, 1.0, 1.0, 1.0) }
+fn hud_win_color() { srgba(0.20, 0.85, 0.30, 1.0) }
+fn hud_loss_color() { srgba(0.95, 0.30, 0.30, 1.0) }
 fn button_color() { srgba(0.30, 0.30, 0.36, 1.0) }
 fn button_hover_color() { srgba(0.45, 0.50, 0.65, 1.0) }
 
@@ -35,10 +37,11 @@ fn number_color(n) {
 
 // ---- 几何 -----------------------------------------------------------------
 
-fn tile_pitch() { 64.0 }
-fn tile_size() { 60.0 }
-fn label_font_size() { 32.0 }
-fn hud_font_size() { 22.0 }
+fn tile_size() { 32.0 }
+fn tile_gap() { 2.0 }
+fn label_font_size() { 18.0 }
+fn hud_font_size() { 18.0 }
+fn board_bg_color() { srgba(0.20, 0.20, 0.20, 1.0) }
 
 // ---- 时间格式化 -----------------------------------------------------------
 

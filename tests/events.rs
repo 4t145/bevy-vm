@@ -7,11 +7,12 @@
 //! typed 通道（双缓冲，host 在 tick 后稳定 drain）。这里用最简的方式
 //! 验证：直接看 Health 字段就够说明事件链跑通。
 
+use bevy_ecs::message::Message;
 use bevy_vm::VmInstanceBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Message, Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 struct Hit {
     target: i64,
     amount: f64,
@@ -36,9 +37,11 @@ fn typed_event_in_dynamic_event_out() {
     assert_eq!(entities.len(), 1, "exactly one Health entity in fixture");
     let target = entities[0];
 
-    // Typed 双缓冲：send_event 写 back；tick 末 swap 进 front；下一 tick
-    // 脚本读到。所以需要 1 次 tick 让 swap 发生 + 1 次 tick 让脚本读到。
+    // 拆桥后 typed event 直接走 Bevy `Messages<Hit>`：send_event 立即把
+    // 事件写进 Messages<Hit>，VM cursor 下次 tick 立刻读到——一次 tick
+    // 即足够让脚本看见 + mutate Health。
     vm.send_event::<Hit>(
+        &mut world,
         "Hit",
         Hit {
             target: target.to_bits() as i64,
@@ -47,11 +50,7 @@ fn typed_event_in_dynamic_event_out() {
     )
     .expect("typed event sends cleanly");
 
-    // tick 1: 脚本读 Hit.front=[]（仍在 back），无 mutation。tick 末 swap。
-    // tick 2: 脚本读 Hit.front=[Hit] → 减血 + emit Damaged（dynamic，同帧可见）。
-    //         tick 末：Hit.swap (front 清空)，Damaged 是 dynamic clear。
-    vm.tick(&mut world).expect("tick 1");
-    vm.tick(&mut world).expect("tick 2");
+    vm.tick(&mut world).expect("tick");
 
     // Health 从 50 减到 38——脚本端事件链跑通。
     let hp = vm

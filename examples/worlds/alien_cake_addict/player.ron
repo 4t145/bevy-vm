@@ -1,0 +1,14 @@
+// player plugin：alien 球体 + 方向键移动。
+//
+// 起始格 (i, j) = (BOARD_W/2, BOARD_H/2)，每按一次方向键最多走 1 格，
+// 间隔 move_cooldown（0.3s）。state == 1（gameover）时不响应输入。
+(
+    dependencies: ["board"],
+    components: [
+        // i / j 是格子坐标。
+        (name: "Player", default: (i: 7, j: 10, rot_y: -90.0)),
+    ],
+    systems: [
+        Script(path: "player.rhai"),
+    ],
+)

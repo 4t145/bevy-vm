@@ -1,0 +1,13 @@
+// bonus plugin：定时 spawn / despawn cake，旋转 + 缩放呼吸。
+//
+// 5s 一刷新——存在的旧 cake 没吃就-3 分并 despawn，新 cake 落在玩家以外的
+// 随机格。score ≤ -5 → game over。
+(
+    dependencies: ["board", "player"],
+    components: [
+        (name: "Bonus", default: (i: 0, j: 0)),
+    ],
+    systems: [
+        Script(path: "bonus.rhai"),
+    ],
+)

@@ -1,0 +1,15 @@
+// alien_cake_addict：Bevy 官方 example 的 VM-脚本移植。
+//
+// 14x21 棋盘，玩家用方向键四向移动，每隔 5s spawn 一个金色蛋糕；玩家走到
+// 蛋糕格子就+2 分，吃掉它；如果蛋糕没吃就刷新-3 分并掉新蛋糕；分数 ≤ -5
+// 进入 game over，按空格重开。
+//
+// module 分工：
+// - board：单例 Game 状态机 + 14x21 棋盘 + 主相机；负责相机平滑 focus
+// - player：alien 球体 + 方向键移动（带冷却）
+// - bonus：定时 spawn / despawn cake，碰撞吃 cake +2 分
+// - hud：scoreboard 文字 + game over 屏 + space 键重启
+(
+    seed: Some(20251214),
+    modules: ["board", "player", "bonus", "hud"],
+)

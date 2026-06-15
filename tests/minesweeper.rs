@@ -20,8 +20,6 @@ fn minesweeper_world_loads_with_initial_entities() {
 
     let boards = vm.query(&mut world, "board::Board");
     assert_eq!(boards.len(), 1, "1 board singleton");
-    let cams = vm.query(&mut world, "MainCamera2d");
-    assert_eq!(cams.len(), 1, "1 main camera marker");
     let timers = vm.query(&mut world, "timer::GameTimer");
     assert_eq!(timers.len(), 1, "1 game timer singleton");
 }

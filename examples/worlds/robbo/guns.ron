@@ -1,0 +1,19 @@
+// guns plugin：场上的 Gun '}' 每帧 5% 概率朝固定方向射一发子弹。
+//
+// 原版 Gun 有方向（0=E 1=S 2=W 3=N）+ 类型（Solid/Blaster/Burst）+
+// moveable 等参数。我们简化：
+// - Gun 默认朝南（dir_i=1，即向下射）—— 关 1 的两个 gun 在 additional 段
+//   配置了具体方向，但现在我们的 board 加载尚未解析 additional；先用统一
+//   方向。
+// - 类型一律当 Burst（普通子弹），跟玩家子弹同流程。
+//
+// Bullet entity 是脚本端创建的临时实体，VmTag 会自动加。bullets.rhai
+// 推进 Bullet 时不分敌我——只看坐标命中。Robbo 在子弹路径就死。
+(
+    dependencies: ["board", "bullets"],
+    systems: [
+        // 排在 bullets 前——这一帧 spawn 的 gun 子弹，让 bullets.rhai 同帧
+        // 就能开始推进它（但 BULLET_TICK_RATE 节流意味着多数帧子弹原地不动）。
+        Script(path: "guns.rhai", before: ["bullets"]),
+    ],
+)

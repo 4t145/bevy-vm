@@ -1,9 +1,10 @@
 // anim module 脚本：维护 Hovered + 每帧刷新 tile 视觉。
 //
 // 两步：
-// 1. 消费 host 端 PickOver / PickOut 事件，写 Hovered.value 到对应实体。
-//    可能命中非 tile 实体（按钮等）——也写无害，下面的视觉刷新跳过它们。
-// 2. 扫所有 tile，根据 cell::Tile 状态 + Hovered 写 sprite/text。
+// 1. 消费 PickOver / PickOut（host PickingPlugin 镜像到 Bevy Messages<...>），
+//    写 Hovered.value 到对应实体。可能命中非 tile 实体——也写无害，下面的
+//    视觉刷新跳过它们。
+// 2. 扫所有 tile，根据 cell::Tile 状态 + Hovered 写 cell BG + label Text。
 
 import "helpers" as h;
 
@@ -22,36 +23,37 @@ for tile in query("cell::Tile") {
     update_appearance(tile);
 }
 
-fn update_appearance(e) {
-    let revealed = get(e, "cell::Tile", "revealed");
-    let flag = get(e, "cell::Tile", "flag");
-    let mine = get(e, "cell::Tile", "mine");
-    let adj = get(e, "cell::Tile", "adj");
-    let hovered = get(e, "Hovered", "value") == 1;
+fn update_appearance(cell) {
+    let revealed = get(cell, "cell::Tile", "revealed");
+    let flag = get(cell, "cell::Tile", "flag");
+    let mine = get(cell, "cell::Tile", "mine");
+    let adj = get(cell, "cell::Tile", "adj");
+    let hovered = get(cell, "Hovered", "value") == 1;
+    let label = get(cell, "cell::Tile", "label");
 
     if revealed == 1 {
         // 已揭开——不响应 hover。
         if mine == 1 {
-            set_sprite_color(e, h::color_mine());
-            set_text_content(e, "X");
-            set_text_color(e, h::flag_text_color());
+            set(cell, "BackgroundColor", "", h::color_mine());
+            set(label, "Text", "", "X");
+            set(label, "TextColor", "", h::flag_text_color());
         } else {
-            set_sprite_color(e, h::color_revealed());
+            set(cell, "BackgroundColor", "", h::color_revealed());
             if adj > 0 {
-                set_text_content(e, adj.to_string());
-                set_text_color(e, h::number_color(adj));
+                set(label, "Text", "", adj.to_string());
+                set(label, "TextColor", "", h::number_color(adj));
             } else {
-                set_text_content(e, "");
+                set(label, "Text", "", "");
             }
         }
     } else if flag == 1 {
         let bg = if hovered { h::color_flag_hover() } else { h::color_flag() };
-        set_sprite_color(e, bg);
-        set_text_content(e, "F");
-        set_text_color(e, h::flag_text_color());
+        set(cell, "BackgroundColor", "", bg);
+        set(label, "Text", "", "F");
+        set(label, "TextColor", "", h::flag_text_color());
     } else {
         let bg = if hovered { h::color_hidden_hover() } else { h::color_hidden() };
-        set_sprite_color(e, bg);
-        set_text_content(e, "");
+        set(cell, "BackgroundColor", "", bg);
+        set(label, "Text", "", "");
     }
 }

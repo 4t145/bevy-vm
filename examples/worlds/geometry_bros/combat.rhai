@@ -79,11 +79,12 @@ for enemy in alive_enemies {
     let dz = ez - pz;
     if dx * dx + dz * dz <= pe_threshold_sq {
         let dmg_per_sec = get(enemy, "enemy::Enemy", "damage");
-        // 按 dt 比例扣血——避免帧率影响伤害。
-        let hp = get(player, "player::Player", "hp") - (dmg_per_sec.to_float() * dt);
+        let hp_before = get(player, "player::Player", "hp");
+        let hp = hp_before.to_float() - (dmg_per_sec.to_float() * dt);
         if hp < 0.0 { hp = 0.0; }
-        set(player, "player::Player", "hp", hp.to_int());
-        if hp <= 0.0 {
+        let hp_int = hp.to_int();
+        set(player, "player::Player", "hp", hp_int);
+        if hp_int <= 0 {
             emit("PlayerDied", #{});
             return;
         }

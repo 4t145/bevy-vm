@@ -1,0 +1,19 @@
+// robbo plugin：Robbo entity + 方向键移动 + 推箱 + 拾取。
+//
+// 单 Player entity：sprite + (i, j) 网格坐标 + 方向。每次按方向键走一格——
+// 不像原版有移动冷却（原版按住可连走），脚本端按 KeyboardInput 离散事件
+// 处理已经够"按一次走一次"的语义。
+(
+    dependencies: ["board"],
+    components: [
+        (
+            name: "Player",
+            // last_tp_i/j：上次传送目的地——用于"刚瞬移到的格不立即再触发"。
+            // 初始化为不可能的值（-1）让 spawn 时也不被误认为刚瞬移过。
+            default: (i: 0, j: 0, dir: 0, spawned: 0, shift_held: 0, last_tp_i: -1, last_tp_j: -1),
+        ),
+    ],
+    systems: [
+        Script(path: "robbo.rhai"),
+    ],
+)
