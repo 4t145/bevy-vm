@@ -1,0 +1,39 @@
+// board plugin：棋盘元数据 + 初始 layout。
+//
+// 状态字段：
+// - layout_built: Cell 实体是否已 spawn
+//
+// width / height 在 world.ron 给初值，不打算在游戏内动态改尺寸——保留字段
+// 是为将来支持难度档（窄盘 / 高盘）留空间。
+//
+// 这里只声明组件——init_layout 在 board.rhai 里跑。
+(
+    components: [
+        (
+            name: "Board",
+            default: (
+                width: 10,
+                height: 20,
+                layout_built: 0,
+            ),
+        ),
+        // 棋盘单格——按位置定身份，value 存当前驻留的 piece kind（0 表示空）。
+        // hover 字段供 active piece 临时染色：piece 锁定前每帧把 active 4 格
+        // 写为 (-kind)，anim 据此显示飘落颜色；锁定时改成正 kind。
+        (
+            name: "Cell",
+            default: (x: 0, y: 0, value: 0, label: 0),
+        ),
+        // 棋盘 grid 容器 marker——restart 时遍历 Cell 把 value 清零即可，不
+        // 需要 despawn 重建（尺寸固定）。保留 marker 为以后改尺寸的 despawn
+        // 路径预留。
+        (name: "BoardGrid", default: ()),
+        // HUD slot：board 第一帧 spawn 的空 status bar 容器，hud.rhai 把
+        // 文字 / 标题 append 进去。先 spawn HUD slot 再 spawn BoardGrid，
+        // 保证两者顺序（slot top, grid bottom）跨 restart 不变。
+        (name: "HudSlot", default: ()),
+    ],
+    systems: [
+        Script(path: "board.rhai"),
+    ],
+)

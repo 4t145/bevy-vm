@@ -1,0 +1,22 @@
+// lines plugin：监听 ClearRows → 扫满行清掉、上面行下落、加分。
+//
+// 与 piece 的耦合点：piece 锁定后 emit ClearRows；本 plugin 同帧消费——所以
+// `after: ["piece"]` 必须排上。
+//
+// 算法（参考实现 collapse_full_rows）：
+// 1. 自下而上扫每行，是否全 value > 0
+// 2. 满行的 y 收集，从下往上 (y 越大越早) 处理：把 0..y 行向下移一格
+// 3. 满行总数计入 Score.lines + 重新算 level；按经典 100/300/500/800 加分
+(
+    dependencies: ["piece"],
+    events: [
+        // 字段：触发时无附带数据。
+        (name: "ClearRows", default: ()),
+    ],
+    systems: [
+        Script(
+            path: "lines.rhai",
+            after: ["piece"],
+        ),
+    ],
+)

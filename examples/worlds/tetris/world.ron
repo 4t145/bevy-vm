@@ -1,0 +1,30 @@
+// Tetris：仿照 minesweeper 的模块拆分。
+//
+// 跨 module 走事件驱动——
+// - input::KeyboardInput 由 host 推送
+// - piece 监听 KeyboardInput → 平移/旋转/软降/硬降；gravity / lock-delay 计时；
+//   锁定后写 Cell.value，emit lines::ClearRows 与 piece::SpawnNext
+// - lines  监听 ClearRows  → 扫满行清掉、上面行下落、加分；emit piece::Spawn
+//   Next 让 piece 在下一帧吐新块
+// - restart 监听 KeyR → emit piece::RestartGame
+// - piece 自己监听 RestartGame → 清 Cell.value、reset Score、spawn 第一块
+// - anim / hud 是纯视图层，不影响游戏状态
+//
+// 单位约定：整个 game 走 Bevy UI（Node + Button），相机为默认 Camera2d，
+// 1 世界单位 = 1 像素。Cell 用 Node 渲染（不是 Sprite），背景色由 anim 每帧
+// 涂上 active piece 的颜色。
+(
+    seed: Some(20260615),
+    modules: ["board", "piece", "lines", "anim", "hud", "restart"],
+    components: [
+        // 全 game 唯一的根 Node——board 的 init_layout 第一帧 spawn 它，
+        // hud 把 status bar 挂为它的子节点，board grid 也挂为它的子节点。
+        (name: "GameRoot", default: ()),
+    ],
+    entities: [
+        // 棋盘元数据单例。各 module 通过 query("board::Board") 找它。
+        (components: {
+            "board::Board": (width: 10, height: 20),
+        }),
+    ],
+)

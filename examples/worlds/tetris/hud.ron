@@ -1,0 +1,18 @@
+// hud plugin：HUD 树构建 + 状态刷新（分数、等级、行数、状态文字）。
+//
+// 跑在 piece / lines 之后——这样 refresh_hud 看到的 Score 都是本帧最新值。
+// HUD 不持有自己的根 Node——挂为 board module 创建的 HudSlot 子节点，与
+// board grid 同根并列。
+(
+    dependencies: ["board", "piece", "lines"],
+    components: [
+        // 状态文本节点的 marker：kind="score" / "lines" / "level" / "phase"。
+        (name: "HudKind", default: (kind: "")),
+    ],
+    systems: [
+        Script(
+            path: "hud.rhai",
+            after: ["piece", "lines"],
+        ),
+    ],
+)

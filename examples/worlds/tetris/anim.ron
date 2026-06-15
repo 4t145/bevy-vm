@@ -1,0 +1,14 @@
+// anim plugin：每帧把 Cell.value + active piece 的 4 格 + ghost piece 涂到
+// 相应 BackgroundColor。
+//
+// 视图层独立：piece / lines 改 Cell.value，本 plugin 在它们之后跑读最新值。
+// active piece 临时染色（不写 Cell.value，仅改 BackgroundColor）——避免和
+// "已锁定方块"混淆。
+(
+    dependencies: ["piece", "lines"],
+    systems: [
+        // 跑在 piece / lines 之后——读到本帧最新的 Cell.value 与 Piece 状态，
+        // 锁定 / 消行 / 移动同帧反映在屏幕上。
+        Script(path: "anim.rhai", after: ["piece", "lines"]),
+    ],
+)

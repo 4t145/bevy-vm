@@ -1,0 +1,64 @@
+// piece plugin：active piece + 评分状态 + 5 类领域事件 handler。
+//
+// 与参考实现集中在这里——所有"游戏核心规则"都在 piece.rhai：
+// - spawn_next：随机 7-bag 抽 kind，放在顶部居中；首格碰撞即 game over
+// - 输入：左/右/下平移、↑ 旋转、Space 硬降
+// - gravity：累计 elapsed_drop，到阈值就下落一格
+// - lock-delay：触底后宽限 lock_delay 秒供平移 / 旋转
+// - 锁定后把 active 4 格写入 Cell.value，emit lines::ClearRows + 自 emit SpawnNext
+//
+// 与外部交互通过事件：上游 emit RestartGame，本 plugin 在下一 tick 消费。
+(
+    dependencies: ["board"],
+    components: [
+        // 当前下落中的 piece。bag/bag_pos 实现 7-bag 随机：bag_pos==0 时
+        // 重新洗牌写 bag_0..bag_6，每次取 bag[bag_pos] 后 bag_pos++.
+        (
+            name: "Piece",
+            default: (
+                kind: 0,        // 0 = 还没生成；1..7 = I O T S Z J L
+                rotation: 0,
+                x: 0,
+                y: 0,
+                gravity_timer: 0.0,    // 距上次下落的累计时间
+                lock_timer: 0.0,       // 触底后已经停留的时间；未触底为 0
+                soft_drop: 0,          // 1 表示按住 ↓
+                bag_pos: 0,
+                bag_0: 0, bag_1: 0, bag_2: 0, bag_3: 0,
+                bag_4: 0, bag_5: 0, bag_6: 0,
+            ),
+        ),
+        // 计分状态。lines / level 让 hud 可读，gravity 速度根据 level 算。
+        // state: 0=playing, 1=gameover.
+        (
+            name: "Score",
+            default: (
+                score: 0,
+                lines: 0,
+                level: 1,
+                state: 0,
+                start_time: 0.0,
+                end_time: 0.0,
+            ),
+        ),
+    ],
+    events: [
+        // RestartGame 无字段——只是个信号。emit 时给空 map 即可。
+        (name: "RestartGame", default: ()),
+        // SpawnNext：piece 自己 emit、自己消费——把"锁定后吐新块"的逻辑
+        // 串到下一帧；同帧 emit + 同帧消费会让一次输入触发两次 spawn。
+        (name: "SpawnNext", default: ()),
+    ],
+    entities: [
+        // active piece 单例 + 计分单例。各 module 通过 query 找它们。
+        (components: { "Piece": (kind: 0) }),
+        (components: { "Score": (level: 1) }),
+    ],
+    systems: [
+        // 必须 after restart——RestartGame emitter；同一 tick 消费。
+        Script(
+            path: "piece.rhai",
+            after: ["restart"],
+        ),
+    ],
+)

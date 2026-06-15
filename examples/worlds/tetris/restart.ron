@@ -1,0 +1,10 @@
+// restart plugin：监听键盘 R 键 → emit piece::RestartGame。
+//
+// 与 minesweeper 的 restart plugin 同结构——纯输入路由。
+(
+    dependencies: ["piece"],
+    systems: [
+        // 排在 piece 前——同帧 emit 的 RestartGame 让 piece 当 tick 即处理。
+        Script(path: "restart.rhai", before: ["piece"]),
+    ],
+)
